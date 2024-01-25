@@ -3,29 +3,20 @@
 
 #include "stdint.h"
 
-#ifdef UNITTEST
-#define PRIVATE
-#else
-#define PRIVATE static
-#endif
-
-#define COMMMAND_TEST 0
-
 typedef enum {
-	COMM_RECEIVE_ERROR_STATE_NONE,
-	COMM_RECEIVE_ERROR_STATE_UNSYNC,
-	COMM_RECEIVE_ERROR_STATE_COMMAND_ID,
-	COMM_RECEIVE_ERROR_STATE_CRC
-} comm_receive_error_state_t;
-
-#ifdef UNITTEST
-void CommReceiveUnittestReset();
-#endif
+	COMM_ERROR_NONE,
+	COMM_ERROR_SIGNAL,
+	COMM_ERROR_DATA,
+	COMM_ERROR_BUSY
+} comm_error_t;
+static_assert(sizeof(comm_error_t) == 1, "");
 
 void CommBegin();
+void CommLoop();
 
-void CommReceiveLoop();
+void CommSetDeviceNr(uint8_t device_nr);
+void CommSetStripNr(uint8_t strip_nr);
 
-void CommReceiveByte(uint8_t b);
+comm_error_t CommGetLastError();
 
 #endif
