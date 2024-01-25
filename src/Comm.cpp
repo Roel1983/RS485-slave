@@ -1,6 +1,27 @@
 #include <string.h> 
 
+#include <avr/io.h>
+#include <avr/interrupt.h>
+
 #include "Comm.h"
+
+#define ASYNCHRONOUS (0<<UMSEL00) // USART Mode Selection
+
+#define DISABLED    (0<<UPM00)
+#define EVEN_PARITY (2<<UPM00)
+#define ODD_PARITY  (3<<UPM00)
+#define PARITY_MODE  DISABLED // USART Parity Bit Selection
+
+#define ONE_BIT (0<<USBS0)
+#define TWO_BIT (1<<USBS0)
+#define STOP_BIT ONE_BIT      // USART Stop Bit Selection
+
+#define FIVE_BIT  (0<<UCSZ00)
+#define SIX_BIT   (1<<UCSZ00)
+#define SEVEN_BIT (2<<UCSZ00)
+#define EIGHT_BIT (3<<UCSZ00)
+#define DATA_BIT   EIGHT_BIT  // USART Data Bit Selection
+
 
 uint8_t DeviceIdGet() {
 	return 4;
@@ -36,19 +57,19 @@ typedef enum {
 
 typedef const struct {
 	const command_type_t type;
-	uint8_t * const      receive_buffer;
+	volatile uint8_t * const      receive_buffer;
 	const uint8_t        receive_buffer_size;
-	uint8_t * const      state;
+	volatile uint8_t * const      state;
 } comm_receive_command_t;
 
-PRIVATE const uint8_t COMM_RECEIVE_PREAMBLE_BYTE  = 0xcc;
+PRIVATE const uint8_t COMM_RECEIVE_PREAMBLE_BYTE  = 0x55;
 PRIVATE const uint8_t COMM_RECEIVE_PREAMBLE_COUNT = 2;
 
 PRIVATE uint8_t   comm_receive_crc               = 0;
 PRIVATE uint16_t  comm_receive_skip_before_count = 0;
 PRIVATE uint16_t  comm_receive_skip_after_count  = 0;
 PRIVATE uint16_t  comm_receive_write_count       = 0;
-PRIVATE uint8_t  *comm_receive_write_pos         = 0;
+volatile PRIVATE uint8_t  *comm_receive_write_pos         = 0;
 PRIVATE uint8_t   comm_receive_address           = 0;
 
 PRIVATE uint8_t   comm_receive_error_state       = 0;
@@ -63,8 +84,8 @@ PRIVATE const command_type_info_t cmd_type_infos[] = {
 
 PRIVATE comm_receive_command_t *comm_receive_command = 0;
 
-PRIVATE uint8_t command1_state = COMMAND_STATE_UNLOCKED;
-PRIVATE uint8_t command1_buffer[4];
+volatile PRIVATE uint8_t command1_state = COMMAND_STATE_UNLOCKED;
+volatile PRIVATE uint8_t command1_buffer[4];
 PRIVATE void (*command1_on_recv_func)(uint8_t buffer[4]) = 0;
 PRIVATE const comm_receive_command_t command1 = {
 	COMMAND_TYPE_BROADCAST,
@@ -129,8 +150,50 @@ void CommReceiveUnittestReset() {
 }
 #endif
 
-void CommReceiveByte(uint8_t b) {
+void CommBegin() {
 	
+	// Set Baud Rate (14764000Hz)
+#if 0
+	UBRR0H = 0x00; ////BAUD_PRESCALER >> 8;
+	UBRR0L = 0x0F; // BAUD_PRESCALER;
+	UCSR0A |= (1<<1);
+#else
+	UBRR0H = 0x00; ////BAUD_PRESCALER >> 8;
+	UBRR0L = 0x10; // BAUD_PRESCALER;
+	UCSR0A |= (1<<1);
+#endif
+	
+	UCSR0C = ASYNCHRONOUS | PARITY_MODE | STOP_BIT | DATA_BIT;
+	
+	// Enable Receiver and Transmitter
+	UCSR0B = (1<<RXEN0) | (1<<TXEN0);
+	
+	//UCSR0B |= (1<<UDRIE0)
+	UCSR0B |= (1<<TXCIE0); // Enables the Interrupt
+	UCSR0B |= (1<<RXCIE0); // Enables the Interrupt
+	
+	
+	DDRB |= 0xff;
+}
+
+ISR(USART_RX_vect)
+{
+	uint8_t data = UDR0;
+	
+	PORTB |= _BV(PB0);
+	
+	if((UCSR0A & ((1 << FE0) | (1 << DOR0) | (1 << UPE0))) == 0) {
+		CommReceiveByte(data);
+	} else {
+		PORTB |= _BV(PB3);
+		PORTB &= ~_BV(PB3);
+	}
+	
+	PORTB &= ~_BV(PB0);
+}
+
+
+inline void CommReceiveByte(uint8_t b) {
 	comm_receive_crc += b;
 	
 	if (comm_receive_skip_before_count) {
@@ -163,6 +226,7 @@ void CommReceiveByte(uint8_t b) {
 			comm_receive_crc              = 0;
 			comm_receive_state            = COMM_RECEIVE_STATE_COMMAND_ID;
 		}
+
 		return;
 	case COMM_RECEIVE_STATE_COMMAND_ID:
 	{
@@ -254,8 +318,14 @@ void CommReceiveByte(uint8_t b) {
 				comm_receive_error_state = COMM_RECEIVE_ERROR_STATE_CRC;
 			}
 			comm_receive_state = COMM_RECEIVE_STATE_SYNC;
+			PORTB |= _BV(PB4);
+			PORTB &= ~_BV(PB4);
 			return;
 		}
+		PORTB |= _BV(PB5);
+		PORTB &= ~_BV(PB5);
+		
+		
 		if(*(comm_receive_command->state) == COMMAND_STATE_WRITE_LOCKED) {
 			*(comm_receive_command->state) = COMMAND_STATE_READ_LOCKED;
 		}
@@ -267,8 +337,11 @@ void CommReceiveByte(uint8_t b) {
 
 void CommReceiveLoop() {
 	if (command1_state == COMMAND_STATE_READ_LOCKED) {
+		PORTB |= _BV(PB1);
+		PORTB &= ~_BV(PB1);
+
 		if(command1_on_recv_func) {
-			command1_on_recv_func(command1_buffer);
+			//command1_on_recv_func(command1_buffer);
 		}
 		command1_state = COMMAND_STATE_UNLOCKED;
 	}

@@ -22,6 +22,8 @@ typedef enum {
 void CommReceiveUnittestReset();
 #endif
 
+void CommBegin();
+
 void CommReceiveLoop();
 
 void CommReceiveByte(uint8_t b);

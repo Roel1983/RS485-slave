@@ -1,5 +1,9 @@
 #define F_CPU 1000000UL
 
+#include <avr/interrupt.h>
+
+#include "Comm.h"
+
 void Setup();
 void Loop();
 
@@ -14,8 +18,12 @@ int main (void)
 #endif
 
 void Setup() {
+	CommBegin();
+	
+	sei();
 }
 
 void Loop() {
+	CommReceiveLoop();
 }
 
