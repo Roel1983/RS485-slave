@@ -1,9 +1,10 @@
-#include "Comm.h"
-
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+#include "CommandLib.h"
+#include "Macros.h"
+
+#include "Comm.h"
 
 typedef enum {
 	COMM_STATE_PREAMBLE,
@@ -18,64 +19,6 @@ constexpr uint8_t  comm_preamble_byte  = 0x55;
 constexpr uint8_t  comm_preamble_count = 2;
 
 static volatile comm_error_t comm_error = COMM_ERROR_NONE;
-
-// Start command.h
-
-typedef enum {
-	COMMAND_TYPE_BROADCAST,
-	COMMAND_TYPE_STRIP,
-} command_type_t;
-static constexpr uint8_t command_type_block_counts[] = {1, 4};
-
-constexpr uint8_t CommandTypeGetBlockCount(const int type) {
-	return command_type_block_counts[type];
-};
-
-typedef enum {
-	COMMAND_STATE_UNLOCKED,
-	COMMAND_STATE_WRITE_LOCKED,
-	COMMAND_STATE_READ_LOCKED
-} command_state_t;
-
-struct command_base_t {
-	command_state_t state;
-	uint8_t         block_from;
-	uint8_t         block_to;
-	uint8_t         buffer[0];
-};
-
-template <
-	command_type_t _type,
-	typename       T
-> struct command_t : public command_base_t {
-	using Type = T;
-	static constexpr command_type_t type = _type;
-	
-	T buffer[CommandTypeGetBlockCount(_type)];
-};
-
-struct command_info_t {
-	command_type_t  type;
-	command_base_t& command;
-	uint8_t         block_size;
-
-	template <
-		command_type_t _type,
-		typename       T
-	> constexpr command_info_t(command_t<_type, T>& _command)
-	: type(_type)
-	, command(_command)
-	, block_size(sizeof(T)) {
-	}
-};
-
-command_t<COMMAND_TYPE_BROADCAST, uint16_t> command1;
-
-constexpr command_info_t command_infos[] = {
-	command_info_t(command1)
-};
-
-// End command.h
 
 static struct {
 	uint8_t               crc;
@@ -127,6 +70,20 @@ static void CommSetupUsart() {
 }
 
 void CommLoop() {
+	for (uint8_t i = 0; i < ARRAY_SIZE(command_infos); i++) {
+		const command_info_t& command_info(command_infos[i]);
+		command_base_t& command(command_info.command);
+		if (command.state == COMMAND_STATE_READ_LOCKED) {
+			
+			if (CommandTypeGetBlockCount(command_info.type) == 1) {
+				command_info.on_received_function.single_block(command.buffer);
+			} else {
+				command_info.on_received_function.multi_block(
+					command.block_from, command.block_to, command.buffer);
+			}
+			command.state = COMMAND_STATE_UNLOCKED;
+		}
+	}
 }
 
 comm_error_t CommGetLastError() {
