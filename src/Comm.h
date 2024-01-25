@@ -9,7 +9,9 @@ typedef enum {
 	COMM_ERROR_DATA,
 	COMM_ERROR_BUSY
 } comm_error_t;
+#ifndef UNITTEST
 static_assert(sizeof(comm_error_t) == 1, "");
+#endif 
 
 void CommBegin();
 void CommLoop();

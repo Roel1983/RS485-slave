@@ -164,12 +164,12 @@ $(FIRMWARE_BUILD_DIR)/%.o: %.cpp $(FIRMWARE_BUILD_DIR)/%.d | avr-gcc Makefile
 # Unittest
 $(UNITTEST_EXECUTABLE_FILE): $(UNITTEST_OBJECT_FILES)
 	@$(call mkdir, $(dir $@))
-	g++ $(CODE_COVERAGE_FLAGS) -o $@ $^ /usr/src/gtest/lib/libgtest.a
+	g++ -std=c++11 $(CODE_COVERAGE_FLAGS) -o $@ $^ /usr/src/gtest/lib/libgtest.a
 
 $(UNITTEST_BUILD_DIR)/%.o: %.cpp
 $(UNITTEST_BUILD_DIR)/%.o: %.cpp $(UNITTEST_BUILD_DIR)/%.d Makefile
 	@$(call mkdir, $(dir $@))
-	g++ -g3 -c $(DEPFLAGS) $(CODE_COVERAGE_FLAGS) -DUNITTEST -Isrc/unittest/fakeavr -o $@ $< 
+	g++ -std=c++11 -g3 -c -DF_CPU=$(F_CPU) $(DEPFLAGS) $(CODE_COVERAGE_FLAGS) -DUNITTEST -Isrc/unittest/fakeavr -o $@ $< 
 
 #dependency generation
 

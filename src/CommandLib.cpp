@@ -4,6 +4,14 @@ command_t<COMMAND_TYPE_BROADCAST, uint16_t> command1;
 command_t<COMMAND_TYPE_DEVICE, uint16_t> command2;
 command_t<COMMAND_TYPE_STRIP, uint16_t> command3;
 
+#ifdef UNITTEST
+COMMAND_INFO_DECL command_info_t command_infos[] = {
+	command_info_t(command1, OnCommand1),
+	command_info_t(command2, OnCommand2),
+	command_info_t(command3, OnCommand3)
+};
+#endif
+
 void OnCommand1(uint16_t& value) {
 }
 

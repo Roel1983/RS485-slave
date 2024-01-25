@@ -3,6 +3,12 @@
 
 #include <stdint.h>
 
+#ifdef UNITTEST
+#define COMMAND_INFO_DECL 
+#else
+#define COMMAND_INFO_DECL constexpr
+#endif
+
 typedef enum {
 	COMMAND_TYPE_BROADCAST,
 	COMMAND_TYPE_DEVICE,
@@ -70,7 +76,7 @@ struct command_info_t {
 	template <
 		command_type_t _type,
 		typename       T
-	> constexpr command_info_t(
+	> COMMAND_INFO_DECL command_info_t(
 		command_t<_type, T>& _command,
 		typename on_received_trait<T, CommandTypeGetBlockCount(_type)>::on_received_function_t function
 	) : type(_type)
