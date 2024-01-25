@@ -3,7 +3,7 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
-#define ARRAY_SIZE(x)  (sizeof(x) / sizeof((x)[0]))
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 typedef enum {
 	COMM_STATE_PREAMBLE,
@@ -77,8 +77,6 @@ constexpr command_info_t command_infos[] = {
 
 // End command.h
 
-
-
 static struct {
 	uint8_t               crc;
 	comm_state_t          state;
@@ -100,6 +98,7 @@ static inline void CommIsrReceiveCommandId(const uint8_t data_byte);
 static inline void CommIsrReceiveCommandIdBroadCast();
 static inline void CommIsrReceiveBlockNr(const uint8_t data_byte);
 static inline void CommIsrReceiveBlockCount(const uint8_t data_byte);
+static inline void CommIsrReceiveCrc(const uint8_t data_byte);
 
 static inline uint8_t CommIsrGetMyBlockNr(command_type_t command_type);
 
@@ -170,6 +169,8 @@ ISR(USART_RX_vect) {
 		case COMM_STATE_BLOCK_COUNT:
 			CommIsrReceiveBlockCount(data_byte);
 			return;
+		case COMM_STATE_CRC:
+			CommIsrReceiveCrc(data_byte);
 		}
 	}
 }
@@ -209,7 +210,8 @@ static inline void CommIsrReceiveCommandIdBroadCast() {
 	
 	if (command.state == COMMAND_STATE_UNLOCKED) {
 		comm_isr.skip_byte_count = comm_isr.command_info->block_size;
-		comm_isr.state = COMM_STATE_PREAMBLE;
+		comm_isr.state           = COMM_STATE_CRC;
+		CommIsrRaiseError(COMM_ERROR_BUSY);
 		return;
 	}
 	command.state = COMMAND_STATE_WRITE_LOCKED;
@@ -261,13 +263,42 @@ static inline void CommIsrReceiveBlockCount(const uint8_t data_byte) {
 			comm_isr.read_byte_pos   = comm_isr.command_info->command.buffer;
 		}
 		comm_isr.skip_byte_count = skip_before_read_block_count * block_size;
+	} else {
+		uint8_t my_end_block_nr = my_block_nr + my_block_count;
+		read_block_count = (comm_isr.block_nr < my_end_block_nr)
+				? my_end_block_nr - comm_isr.block_nr
+				: 0;
+		comm_isr.read_byte_count = read_block_count * block_size;
+		comm_isr.read_byte_pos   = comm_isr.command_info->command.buffer
+		                         + (comm_isr.block_nr - my_block_nr) * block_size;
+		
+		skip_after_read_block_count = block_count - read_block_count;
+		comm_isr.skip_byte_after_read_count = skip_after_read_block_count * block_size;		
 	}
+	if (comm_isr.read_byte_count) {
+		command.state = COMMAND_STATE_WRITE_LOCKED;
+	}
+	comm_isr.state = COMM_STATE_CRC;
+}
+
+static inline void CommIsrReceiveCrc(const uint8_t data_byte) {
+	command_base_t& command(comm_isr.command_info->command);
 	
+	if (comm_isr.crc != 0) {
+		command.state = COMMAND_STATE_UNLOCKED;
+		CommIsrRaiseError(COMM_ERROR_DATA);
+		comm_isr.state = COMM_STATE_PREAMBLE;
+		return;
+	}
+	if (command.state == COMMAND_STATE_WRITE_LOCKED) {
+		command.state = COMMAND_STATE_READ_LOCKED;
+	}
+	comm_isr.state = COMM_STATE_PREAMBLE;
 }
 
 static inline void CommIsrRaiseError(comm_error_t error) {
 	if (comm_error == COMM_ERROR_NONE) {
-		comm_error = COMM_ERROR_SIGNAL;
+		comm_error = error;
 	}
 }
 
