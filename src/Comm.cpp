@@ -34,7 +34,7 @@ static struct {
 	const command_info_t* command_info;
 } comm_isr;
 
-static void CommSetupUsart();
+PRIVATE void CommSetupUsart();
 static inline void CommIsrRaiseError(comm_error_t error);
 static inline void CommIsrReceivePreamble(const uint8_t data_byte);
 static inline void CommIsrReceiveCommandId(const uint8_t data_byte);
@@ -49,7 +49,7 @@ void CommBegin() {
 	CommSetupUsart();
 }
 
-static void CommSetupUsart() {
+PRIVATE void CommSetupUsart() {
 	constexpr uint16_t baudrate_prescaler = (F_CPU / (8UL * comm_baudrate)) - 1;
 	
 	UBRR0H  = baudrate_prescaler >> 8;
@@ -264,7 +264,7 @@ volatile union {
 		uint8_t device_nr;
 		uint8_t strip_nr;
 	};
-	uint8_t by_type[];
+	uint8_t by_type[0];
 } comm_my_block_nrs = {{
 	.device_nr = 0,
 	.strip_nr  = 0

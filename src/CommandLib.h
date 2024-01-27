@@ -13,7 +13,7 @@ extern command_t<COMMAND_TYPE_STRIP, uint16_t> command3;
 void OnCommand3(uint8_t from_index, uint8_t to_index, uint16_t blocks[4]);
 
 #ifdef UNITTEST
-extern COMMAND_INFO_DECL command_info_t command_infos[];
+extern COMMAND_INFO_DECL command_info_t command_infos[3];
 #else
 COMMAND_INFO_DECL command_info_t command_infos[] = {
 	command_info_t(command1, OnCommand1),
