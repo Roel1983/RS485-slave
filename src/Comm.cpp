@@ -31,6 +31,7 @@ static volatile union {
 }};
 
 PRIVATE INLINE void CommIsrRaiseError(comm_error_t error);
+PRIVATE INLINE void CommFire(const command_info_t& command_info);
 PRIVATE INLINE void CommIsrReceivePreamble(const uint8_t data_byte);
 PRIVATE INLINE void CommIsrReceiveCommandId(const uint8_t data_byte);
 PRIVATE INLINE void CommIsrReceiveCommandIdBroadCast();
@@ -72,13 +73,34 @@ void CommLoop() {
 		const command_info_t& command_info(command_infos[i]);
 		command_base_t& command(command_info.command);
 		if (command.state == COMMAND_STATE_READ_LOCKED) {
-			
-			if (CommandTypeGetBlockCount(command_info.type) == 1) {
-				command_info.on_received_function.single_block(command.buffer);
-			} else {
-				command_info.on_received_function.multi_block(
-					command.block_from, command.block_to, command.buffer);
+			CommFire(command_info);
+		}
+	}
+}
+
+PRIVATE INLINE void CommFire(const command_info_t& command_info) {
+	command_base_t& command(command_info.command);
+	if (CommandTypeGetBlockCount(command_info.type) == 1) {
+		if (command_info.on_received_function.single_block(*command.buffer)) {
+			command.state = COMMAND_STATE_UNLOCKED;
+		}
+	} else {
+		uint8_t relative_block_nr = 0;
+		uint8_t processed_block_bits = command.processed_block_bits;
+		uint8_t processed_block_bit = 0b1;
+		while(processed_block_bits) {
+			if (processed_block_bits & processed_block_bit && 
+					command_info.on_received_function.multi_block(
+						relative_block_nr,
+						command.buffer[relative_block_nr * command_info.block_size]))
+			{
+				command.processed_block_bits &= ~processed_block_bit;
 			}
+			processed_block_bits &= ~processed_block_bit;
+			relative_block_nr++;
+			processed_block_bit <<= 1;
+		}
+		if (!command.processed_block_bits) {
 			command.state = COMMAND_STATE_UNLOCKED;
 		}
 	}
@@ -168,7 +190,7 @@ PRIVATE INLINE void CommIsrReceiveCommandId(const uint8_t data_byte) {
 PRIVATE INLINE void CommIsrReceiveCommandIdBroadCast() {
 	command_base_t& command(comm_isr.command_info->command);
 	
-	if (command.state != COMMAND_STATE_UNLOCKED) {
+	if (command.state == COMMAND_STATE_READ_LOCKED) {
 		comm_isr.skip_byte_count = comm_isr.command_info->block_size;
 		comm_isr.read_byte_count = 0;
 		comm_isr.skip_byte_after_read_count = 0;
@@ -192,7 +214,7 @@ PRIVATE INLINE void CommIsrReceiveBlockCount(const uint8_t data_byte) {
 	const uint8_t block_count = data_byte;
 	
 	command_base_t& command(comm_isr.command_info->command);
-	if (command.state != COMMAND_STATE_UNLOCKED) {
+	if (command.state == COMMAND_STATE_READ_LOCKED) {
 		comm_isr.skip_byte_count = block_count * comm_isr.command_info->block_size;
 		comm_isr.read_byte_count = 0;
 		comm_isr.skip_byte_after_read_count = 0;
@@ -229,6 +251,7 @@ PRIVATE INLINE void CommIsrReceiveBlockCount(const uint8_t data_byte) {
 			}
 			comm_isr.read_byte_count = read_block_count * block_size;
 			comm_isr.read_byte_pos   = comm_isr.command_info->command.buffer;
+			command.processed_block_bits = (1 << read_block_count) - 1;
 		}
 		comm_isr.skip_byte_count = skip_before_read_block_count * block_size;
 	} else {
@@ -245,10 +268,13 @@ PRIVATE INLINE void CommIsrReceiveBlockCount(const uint8_t data_byte) {
 			comm_isr.skip_byte_after_read_count = skip_after_read_block_count * block_size;
 			comm_isr.skip_byte_count = 0;
 		}
+		uint8_t read_block_offset = (comm_isr.block_nr - my_block_nr);
+		command.processed_block_bits = ((1 << read_block_count) - 1) << read_block_offset;
 		
 		comm_isr.read_byte_count = read_block_count * block_size;
 		comm_isr.read_byte_pos   = comm_isr.command_info->command.buffer
-		                         + (comm_isr.block_nr - my_block_nr) * block_size;
+		                         + read_block_offset * block_size;
+		
 	}
 	if (comm_isr.read_byte_count) {
 		command.state = COMMAND_STATE_WRITE_LOCKED;
@@ -257,7 +283,8 @@ PRIVATE INLINE void CommIsrReceiveBlockCount(const uint8_t data_byte) {
 }
 
 PRIVATE INLINE void CommIsrReceiveCrc(const uint8_t data_byte) {
-	command_base_t& command(comm_isr.command_info->command);
+	const command_info_t& command_info(*comm_isr.command_info);
+	command_base_t&       command(command_info.command);
 	
 	if (comm_isr.crc != 0) {
 		command.state = COMMAND_STATE_UNLOCKED;
@@ -267,6 +294,10 @@ PRIVATE INLINE void CommIsrReceiveCrc(const uint8_t data_byte) {
 	}
 	if (command.state == COMMAND_STATE_WRITE_LOCKED) {
 		command.state = COMMAND_STATE_READ_LOCKED;
+		
+		if (command_info.fire == COMMAND_FIRE_ALLOWED_FROM_ISR) {
+			CommFire(command_info);
+		}
 	}
 	comm_isr.state = COMM_STATE_PREAMBLE;
 }

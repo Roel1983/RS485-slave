@@ -3,6 +3,8 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
+#include <queue>
+
 #include "../Macros.h"
 
 #include "../CommandLib.h"
@@ -32,9 +34,58 @@ extern ISR(USART_RX_vect);
 
 using test_command_type_strip_t = uint16_t;
 command_t<COMMAND_TYPE_STRIP, test_command_type_strip_t> test_command_type_strip;
-void OnReceive_test_command_type_strip(uint8_t from_index, uint8_t to_index, test_command_type_strip_t values[4]) {	
+bool OnReceive_test_command_type_strip(uint8_t relative_block_nr, const test_command_type_strip_t& value) {
+	return true;
 }
 command_info_t command_info_test_command_type_strip(test_command_type_strip, OnReceive_test_command_type_strip);
+
+std::queue<on_received_single_block<uint16_t>::function_t> expected_OnReceive_cmd_broadcast;
+bool OnReceive_cmd_broadcast(const uint16_t& value) {
+	auto& funcs = expected_OnReceive_cmd_broadcast;
+	if(!funcs.empty()) {
+		auto func = funcs.front();
+		funcs.pop();
+		return func(value);
+	}
+	EXPECT_TRUE(false) << "Unexpected call to: OnReceive_cmd_broadcast(" << value << ")";
+	return true;
+}
+
+std::queue<on_received_single_block<uint16_t>::function_t> expected_OnReceive_cmd_device;
+bool OnReceive_cmd_device(const uint16_t& value) {
+	auto& funcs = expected_OnReceive_cmd_device;
+	if(!funcs.empty()) {
+		auto func = funcs.front();
+		funcs.pop();
+		return func(value);
+	}
+	EXPECT_TRUE(false) << "Unexpected call to: OnReceive_cmd_device(" << value << ")";
+	return true;
+}
+
+std::queue<on_received_multi_block<uint16_t>::function_t> expected_OnReceive_cmd_strip;
+bool OnReceive_cmd_strip(uint8_t relative_block_nr, const uint16_t& value) {
+	auto& funcs = expected_OnReceive_cmd_strip;
+	if(!funcs.empty()) {
+		auto func = funcs.front();
+		funcs.pop();
+		return func(relative_block_nr, value);
+	}
+	EXPECT_TRUE(false) << "Unexpected call to: OnReceive_cmd_strip(" << value << ")";
+	return true;
+}
+
+std::queue<on_received_single_block<uint16_t>::function_t> expected_OnReceive_cmd_broadcast_isr_allowed;
+bool OnReceive_cmd_broadcast_isr_allowed(const uint16_t& value) {
+	auto& funcs = expected_OnReceive_cmd_broadcast_isr_allowed;
+	if(!funcs.empty()) {
+		auto func = funcs.front();
+		funcs.pop();
+		return func(value);
+	}
+	EXPECT_TRUE(false) << "Unexpected call to: OnReceive_cmd_broadcast_isr_allowed(" << value << ")";
+	return true;
+}
 
 class CommTest : public Test {
 protected:
@@ -42,8 +93,8 @@ protected:
 		CommReset();
 		CommandLibReset();
 		memset(&test_command_type_strip, 0x00, sizeof(test_command_type_strip));
-		OnReceive_cmd_broadcast_called = 0;
-		OnReceive_cmd_strip_called     = 0;
+		
+		expected_OnReceive_cmd_broadcast = std::queue<on_received_single_block<uint16_t>::function_t>();
 	}
 };
 
@@ -65,52 +116,43 @@ TEST_F(CommTest, CommBegin) {
 	EXPECT_EQ(UCSR0B, (1<<RXEN0)   | (1<<TXEN0) | (1<<TXCIE0) | (1<<RXCIE0));
 }
 
-void OnReceive_cmd_broadcast(uint16_t& value) {
-	OnReceive_cmd_broadcast_called++;
-	OnReceive_cmd_broadcast_value = value;
-}
+//~ TEST_F(CommTest, CommLoop_receivedNothing) {
+	//~ CommLoop();
+	
+	//~ EXPECT_EQ(OnReceive_cmd_broadcast_called, 0);
+	//~ EXPECT_EQ(OnReceive_cmd_strip_called, 0);
+//~ }
 
-void OnReceive_cmd_device(uint16_t& value) {}
+//~ TEST_F(CommTest, CommLoop_receivingNotFinished) {
+	//~ cmd_broadcast.state = COMMAND_STATE_WRITE_LOCKED;
+	
+	//~ CommLoop();
+	
+	//~ EXPECT_EQ(cmd_broadcast.state, COMMAND_STATE_WRITE_LOCKED);
+	//~ EXPECT_EQ(OnReceive_cmd_broadcast_called, 0);
+//~ }
 
-void OnReceive_cmd_strip(uint8_t from_index, uint8_t to_index, uint16_t values[4]) {
-	OnReceive_cmd_strip_called++;
-}
+//~ TEST_F(CommTest, CommLoop_receivedSingleBlockCommandType) {
+	//~ cmd_broadcast.state = COMMAND_STATE_READ_LOCKED;
+	//~ cmd_strip.processed_block_bits = 0x0001;
+	
+	//~ CommLoop();
+	
+	//~ EXPECT_EQ(cmd_broadcast.state, COMMAND_STATE_UNLOCKED);
+	//~ EXPECT_EQ(OnReceive_cmd_broadcast_called, 1);
+	//~ // TODO check parameters
+//~ }
 
-TEST_F(CommTest, CommLoop_receivedNothing) {
-	CommLoop();
+//~ TEST_F(CommTest, CommLoop_receivedMultiBlockCommandType_complete) {
+	//~ cmd_strip.state = COMMAND_STATE_READ_LOCKED;
+	//~ cmd_strip.processed_block_bits = 0x0001;
 	
-	EXPECT_EQ(OnReceive_cmd_broadcast_called, 0);
-	EXPECT_EQ(OnReceive_cmd_strip_called, 0);
-}
-
-TEST_F(CommTest, CommLoop_receivingNotFinished) {
-	cmd_broadcast.state = COMMAND_STATE_WRITE_LOCKED;
+	//~ CommLoop();
 	
-	CommLoop();
-	
-	EXPECT_EQ(cmd_broadcast.state, COMMAND_STATE_WRITE_LOCKED);
-	EXPECT_EQ(OnReceive_cmd_broadcast_called, 0);
-}
-
-TEST_F(CommTest, CommLoop_receivedSingleBlockCommandType) {
-	cmd_broadcast.state = COMMAND_STATE_READ_LOCKED;
-	
-	CommLoop();
-	
-	EXPECT_EQ(cmd_broadcast.state, COMMAND_STATE_UNLOCKED);
-	EXPECT_EQ(OnReceive_cmd_broadcast_called, 1);
-	// TODO check parameters
-}
-
-TEST_F(CommTest, CommLoop_receivedMultiBlockCommandType_complete) {
-	cmd_strip.state = COMMAND_STATE_READ_LOCKED;
-	
-	CommLoop();
-	
-	EXPECT_EQ(cmd_strip.state, COMMAND_STATE_UNLOCKED);
-	EXPECT_EQ(OnReceive_cmd_strip_called, 1);
-	// TODO check parameters
-}
+	//~ EXPECT_EQ(cmd_strip.state, COMMAND_STATE_UNLOCKED);
+	//~ EXPECT_EQ(OnReceive_cmd_strip_called, 1);
+	//~ // TODO check parameters
+//~ }
 
 
 TEST_F(CommTest, CommIsrRaiseError_noErrorYet) {
@@ -342,6 +384,8 @@ static void _testCommIsrReceiveBlockCount(
 	
 	int expected_write_pos,
 	
+	uint8_t expected_processed_block_bits,
+	
 	command_state_t expected_command_state
 ) {
 	CommSetStripNr(my_block_nr);
@@ -363,7 +407,14 @@ static void _testCommIsrReceiveBlockCount(
 	EXPECT_EQ(comm_isr.skip_byte_count,            expected_skip_block_count * block_size);
 	EXPECT_EQ(comm_isr.read_byte_count,            expected_read_block_count * block_size);
 	if(expected_read_block_count) {
-		EXPECT_EQ(comm_isr.read_byte_pos,              &command_info_test_command_type_strip.command.buffer[expected_write_pos * block_size]);
+		EXPECT_EQ(
+				comm_isr.read_byte_pos,
+				&command_info_test_command_type_strip.command.buffer[expected_write_pos * block_size]
+		);
+		EXPECT_EQ(
+				command_info_test_command_type_strip.command.processed_block_bits,
+				expected_processed_block_bits
+		);
 	}
 	EXPECT_EQ(comm_isr.skip_byte_after_read_count, expected_skip_byte_after_read_block_count * block_size);
 	
@@ -372,63 +423,65 @@ static void _testCommIsrReceiveBlockCount(
 	
 	EXPECT_EQ(comm_error,                          COMM_ERROR_NONE);
 }
-
-/* expected_write_pos      -----------------------------+ */
-/* expected_skip_byte_after_read_block_count -------+   | */
-/* expected_read_block_count --------------------+  |   | */
-/* expected_skip_block_count -----------------+  |  |   | */
-/* send_block_count        --------------+    |  |  |   | */
-/* send_block_nr           -----------+  |    |  |  |   | */
-/* my_block_nr             ------+    |  |    |  |  |   | */
-/*                               v    v  v    v  v  v   v */
+/* expected_processed_block_bits ---------------------------+ */
+/* expected_write_pos      -----------------------------+   | */
+/* expected_skip_byte_after_read_block_count -------+   |   | */
+/* expected_read_block_count --------------------+  |   |   | */
+/* expected_skip_block_count -----------------+  |  |   |   | */
+/* send_block_count        --------------+    |  |  |   |   | */
+/* send_block_nr           -----------+  |    |  |  |   |   | */
+/* my_block_nr             ------+    |  |    |  |  |   |   | */
+/*                               v    v  v    v  v  v   v   v */
 
 TEST_F(CommTest, CommIsrReceiveBlockCount_receiveBlocksLowerThenMine) {
-	testCommIsrReceiveBlockCount(5,   1, 3,   3, 0, 0,  0, COMMAND_STATE_UNLOCKED);
-	testCommIsrReceiveBlockCount(5,   2, 3,   3, 0, 0,  0, COMMAND_STATE_UNLOCKED);
+	testCommIsrReceiveBlockCount(6,   1, 4,   4, 0, 0,  0,  0b0000, COMMAND_STATE_UNLOCKED);
+	testCommIsrReceiveBlockCount(6,   1, 5,   5, 0, 0,  0,  0b0000, COMMAND_STATE_UNLOCKED);
+	testCommIsrReceiveBlockCount(6,   5, 1,   1, 0, 0,  0,  0b0000, COMMAND_STATE_UNLOCKED);
 }
 
 TEST_F(CommTest, CommIsrReceiveBlockCount_receiveFirstFewOfMineBlocks) {
-	testCommIsrReceiveBlockCount(6,   4, 3,   2, 1, 0,  0, COMMAND_STATE_WRITE_LOCKED);
-	testCommIsrReceiveBlockCount(6,   5, 4,   1, 3, 0,  0, COMMAND_STATE_WRITE_LOCKED);
+	testCommIsrReceiveBlockCount(6,   6, 1,   0, 1, 0,  0,  0b0001, COMMAND_STATE_WRITE_LOCKED);
+	testCommIsrReceiveBlockCount(6,   6, 3,   0, 3, 0,  0,  0b0111, COMMAND_STATE_WRITE_LOCKED);
 }
 
 TEST_F(CommTest, CommIsrReceiveBlockCount_receiveFirstFewOfMineBlocksAndLower) {
-	testCommIsrReceiveBlockCount(6,   5, 4,   1, 3, 0,  0, COMMAND_STATE_WRITE_LOCKED);
+	testCommIsrReceiveBlockCount(6,   5, 2,   1, 1, 0,  0,  0b0001, COMMAND_STATE_WRITE_LOCKED);
+	testCommIsrReceiveBlockCount(6,   5, 4,   1, 3, 0,  0,  0b0111, COMMAND_STATE_WRITE_LOCKED);
 }
 
 TEST_F(CommTest, CommIsrReceiveBlockCount_receiveAllMineBlocksAndLower) {
-	testCommIsrReceiveBlockCount(3,   2, 5,   1, 4, 0,  0, COMMAND_STATE_WRITE_LOCKED);
+	testCommIsrReceiveBlockCount(3,   2, 5,   1, 4, 0,  0,  0b1111, COMMAND_STATE_WRITE_LOCKED);
 }
 
 TEST_F(CommTest, CommIsrReceiveBlockCount_receiveAllMineBlocks) {
-	testCommIsrReceiveBlockCount(3,   3, 4,   0, 4, 0,  0, COMMAND_STATE_WRITE_LOCKED);
+	testCommIsrReceiveBlockCount(3,   3, 4,   0, 4, 0,  0,  0b1111, COMMAND_STATE_WRITE_LOCKED);
 }
 
 TEST_F(CommTest, CommIsrReceiveBlockCount_receiveAllMineBlocksAndHigher) {
-	testCommIsrReceiveBlockCount(3,   3, 5,   0, 4, 1,  0, COMMAND_STATE_WRITE_LOCKED);
+	testCommIsrReceiveBlockCount(3,   3, 5,   0, 4, 1,  0,  0b1111, COMMAND_STATE_WRITE_LOCKED);
 }
 
 TEST_F(CommTest, CommIsrReceiveBlockCount_receiveAllMineBlocksAndLowerAndHigher) {
-	testCommIsrReceiveBlockCount(3,   1, 7,   2, 4, 1,  0, COMMAND_STATE_WRITE_LOCKED);
+	testCommIsrReceiveBlockCount(3,   1, 7,   2, 4, 1,  0,  0b1111, COMMAND_STATE_WRITE_LOCKED);
 }
 
 TEST_F(CommTest, CommIsrReceiveBlockCount_receiveMiddleFewOfMineBlocks) {
-	testCommIsrReceiveBlockCount(3,   4, 2,   0, 2, 0,  1, COMMAND_STATE_WRITE_LOCKED);
+	testCommIsrReceiveBlockCount(3,   4, 2,   0, 2, 0,  1,  0b0110, COMMAND_STATE_WRITE_LOCKED);
 }
 
 TEST_F(CommTest, CommIsrReceiveBlockCount_receiveLastFewOfMineBlocks) {
-	testCommIsrReceiveBlockCount(4,   5, 3,   0, 3, 0,  1, COMMAND_STATE_WRITE_LOCKED);
-	testCommIsrReceiveBlockCount(4,   7, 1,   0, 1, 0,  3, COMMAND_STATE_WRITE_LOCKED);
+	testCommIsrReceiveBlockCount(4,   5, 3,   0, 3, 0,  1,  0b1110, COMMAND_STATE_WRITE_LOCKED);
+	testCommIsrReceiveBlockCount(4,   7, 1,   0, 1, 0,  3,  0b1000, COMMAND_STATE_WRITE_LOCKED);
 }
 
 TEST_F(CommTest, CommIsrReceiveBlockCount_receiveLastFewOfMineBlocksAndHigher) {
-	testCommIsrReceiveBlockCount(4,   5, 4,   0, 3, 1,  1, COMMAND_STATE_WRITE_LOCKED);
-	testCommIsrReceiveBlockCount(4,   7, 3,   0, 1, 2,  3, COMMAND_STATE_WRITE_LOCKED);
+	testCommIsrReceiveBlockCount(4,   5, 4,   0, 3, 1,  1,  0b1110, COMMAND_STATE_WRITE_LOCKED);
+	testCommIsrReceiveBlockCount(4,   7, 3,   0, 1, 2,  3,  0b1000, COMMAND_STATE_WRITE_LOCKED);
 }
 
 TEST_F(CommTest, CommIsrReceiveBlockCount_receiveBlocksHigherThenMine) {
-	testCommIsrReceiveBlockCount(4,   8, 4,   0, 0, 4,  0, COMMAND_STATE_UNLOCKED);
-	testCommIsrReceiveBlockCount(4,   9, 8,   0, 0, 8,  0, COMMAND_STATE_UNLOCKED);
+	testCommIsrReceiveBlockCount(4,   8, 4,   0, 0, 4,  0,  0b0000, COMMAND_STATE_UNLOCKED);
+	testCommIsrReceiveBlockCount(4,   9, 8,   0, 0, 8,  0,  0b0000, COMMAND_STATE_UNLOCKED);
 }
 
 #define testCommIsrReceiveCrc(args...) {SCOPED_TRACE("testCommIsrReceiveCrc"); _testCommIsrReceiveCrc(args);}
@@ -486,16 +539,21 @@ TEST_F(CommTest, CommSetStripNr_test) {
 	EXPECT_EQ(CommIsrGetMyBlockNr(COMMAND_TYPE_STRIP), 42);
 }
 
+static uint8_t crc = 0x00;
+void SendCrc() {
+	UDR0 = 0x100 - crc;
+	isr_USART_RX_vect();
+}
+
 void Send(uint8_t *buffer, size_t size, bool add_crc = false) {
-	uint8_t crc = 0x00;
+	crc = 0x00;
 	for (int i = 0; i < size; i++) {
 		UDR0 = buffer[i];
 		isr_USART_RX_vect();
 		crc += buffer[i];
 	}
 	if(add_crc) {
-		UDR0 = 0x100 - crc;
-		isr_USART_RX_vect();
+		SendCrc();
 	}
 }
 
@@ -517,6 +575,22 @@ TEST_F(CommTest, ISR_USART_RX_vect_receiveBroadCastCommand) {
 	EXPECT_EQ(comm_isr.state, COMM_STATE_PREAMBLE);
 	EXPECT_EQ(cmd_broadcast.state, COMMAND_STATE_READ_LOCKED);
 	EXPECT_EQ(cmd_broadcast.buffer[0], 0x3412);
+	
+	expected_OnReceive_cmd_broadcast.push([](const uint16_t& value){
+		EXPECT_EQ(value, 0x3412);
+		return false;
+	});
+	CommLoop();
+	ASSERT_TRUE(expected_OnReceive_cmd_broadcast.empty());
+	
+	expected_OnReceive_cmd_broadcast.push([](const uint16_t& value){
+		EXPECT_EQ(value, 0x3412);
+		return true;
+	});
+	CommLoop();
+	ASSERT_TRUE(expected_OnReceive_cmd_broadcast.empty());
+	
+	CommLoop();
 }
 
 TEST_F(CommTest, ISR_USART_RX_vect_receiveDeviceCommand) {
@@ -536,8 +610,111 @@ TEST_F(CommTest, ISR_USART_RX_vect_receiveDeviceCommand) {
 	SendPreamble();
 	Send(buffer, sizeof(buffer), /*add_crc=*/true);
 	
-	EXPECT_EQ(comm_error,     COMM_ERROR_NONE);
-	EXPECT_EQ(comm_isr.state, COMM_STATE_PREAMBLE);
+	EXPECT_EQ(comm_error,       COMM_ERROR_NONE);
+	EXPECT_EQ(comm_isr.state,   COMM_STATE_PREAMBLE);
 	EXPECT_EQ(cmd_device.state, COMMAND_STATE_READ_LOCKED);
 	EXPECT_EQ(cmd_device.buffer[0], 0x2221);
+	
+	expected_OnReceive_cmd_device.push([](const uint16_t& value){
+		EXPECT_EQ(value, 0x2221);
+		return false;
+	});
+	CommLoop();
+	ASSERT_TRUE(expected_OnReceive_cmd_device.empty());
+	
+	expected_OnReceive_cmd_device.push([](const uint16_t& value){
+		EXPECT_EQ(value, 0x2221);
+		return true;
+	});
+	CommLoop();
+	ASSERT_TRUE(expected_OnReceive_cmd_device.empty());
+	
+	CommLoop();
+}
+
+TEST_F(CommTest, ISR_USART_RX_vect_receiveStripCommand) {
+	CommSetStripNr(2);
+	
+	uint8_t buffer[] = {
+		COMMAND_ID_cmd_strip,
+		1,
+		3,
+		0x11,
+		0x11,
+		0x22,
+		0x22,
+		0x33,
+		0x33
+	};
+	SendPreamble();
+	Send(buffer, sizeof(buffer), /*add_crc=*/true);
+	
+	EXPECT_EQ(comm_error,       COMM_ERROR_NONE);
+	EXPECT_EQ(comm_isr.state,   COMM_STATE_PREAMBLE);
+	EXPECT_EQ(cmd_strip.state, COMMAND_STATE_READ_LOCKED);
+	EXPECT_EQ(cmd_strip.buffer[0], 0x2222);
+	EXPECT_EQ(cmd_strip.buffer[1], 0x3333);
+	
+	expected_OnReceive_cmd_strip.push([](uint8_t relative_block_nr, const uint16_t& value){
+		EXPECT_EQ(relative_block_nr, 0);
+		EXPECT_EQ(value, 0x2222);
+		return true;
+	});
+	expected_OnReceive_cmd_strip.push([](uint8_t relative_block_nr, const uint16_t& value){
+		EXPECT_EQ(relative_block_nr, 1);
+		EXPECT_EQ(value, 0x3333);
+		return false;
+	});
+	CommLoop();
+	ASSERT_TRUE(expected_OnReceive_cmd_strip.empty());
+	
+	expected_OnReceive_cmd_strip.push([](uint8_t relative_block_nr, const uint16_t& value){
+		EXPECT_EQ(relative_block_nr, 1);
+		EXPECT_EQ(value, 0x3333);
+		return true;
+	});
+	CommLoop();
+	ASSERT_TRUE(expected_OnReceive_cmd_strip.empty());
+	
+	CommLoop();
+}
+
+TEST_F(CommTest, ISR_USART_RX_vect_receiveBroadcast_isrAllowed_Command) {
+	CommSetStripNr(2);
+	
+	uint8_t buffer[] = {
+		COMMAND_ID_cmd_broadcast_isr_allowed,
+		0x12,
+		0x34
+	};
+	SendPreamble();
+	Send(buffer, sizeof(buffer), /*add_crc=*/false);
+	
+	expected_OnReceive_cmd_broadcast_isr_allowed.push([](const uint16_t& value){
+		EXPECT_EQ(value, 0x3412);
+		return false;
+	});
+	SendCrc();
+	ASSERT_TRUE(expected_OnReceive_cmd_broadcast_isr_allowed.empty());
+	
+	EXPECT_EQ(comm_error,     COMM_ERROR_NONE);
+	EXPECT_EQ(comm_isr.state, COMM_STATE_PREAMBLE);
+	EXPECT_EQ(cmd_broadcast_isr_allowed.state, COMMAND_STATE_READ_LOCKED);
+	EXPECT_EQ(cmd_broadcast_isr_allowed.buffer[0], 0x3412);
+	
+	expected_OnReceive_cmd_broadcast_isr_allowed.push([](const uint16_t& value){
+		EXPECT_EQ(value, 0x3412);
+		return false;
+	});
+	CommLoop();
+	ASSERT_TRUE(expected_OnReceive_cmd_broadcast_isr_allowed.empty());
+	
+	expected_OnReceive_cmd_broadcast_isr_allowed.push([](const uint16_t& value){
+		EXPECT_EQ(value, 0x3412);
+		return true;
+	});
+	CommLoop();
+	ASSERT_TRUE(expected_OnReceive_cmd_broadcast_isr_allowed.empty());
+	
+	CommLoop();
 }
