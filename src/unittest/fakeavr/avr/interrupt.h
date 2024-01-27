@@ -6,6 +6,6 @@ void FakeIoReset();
 #define cli()
 #define sei()
 
-#define ISR(vec) void isr_vect_##vec()
+#define ISR(vec) void isr_##vec()
 
 #endif

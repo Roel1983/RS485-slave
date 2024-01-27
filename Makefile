@@ -117,13 +117,13 @@ unittest: $(UNITTEST_EXECUTABLE_FILE)
 
 test: unittest
 	@rm -f $(UNITTEST_GCDA_FILES)
-	./$(UNITTEST_EXECUTABLE_FILE) --gtest_brief=0
+	./$(UNITTEST_EXECUTABLE_FILE) --gtest_brief=1
 
 codecoverage: $(CODE_COVERAGE_DIR)/codecoverage.html
 
 $(CODE_COVERAGE_DIR)/codecoverage.html: $(UNITTEST_EXECUTABLE_FILE)
 	@rm -f $(UNITTEST_GCDA_FILES)
-	./$(UNITTEST_EXECUTABLE_FILE) --gtest_brief=0
+	./$(UNITTEST_EXECUTABLE_FILE) --gtest_brief=1
 	
 	@$(if $(wildcard %.gcov),-rm *.gcov)
 	@$(call mkdir, $(CODE_COVERAGE_DIR))

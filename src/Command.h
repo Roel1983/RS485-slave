@@ -30,7 +30,7 @@ struct command_base_t {
 	command_state_t state;
 	uint8_t         block_from;
 	uint8_t         block_to;
-	uint8_t         buffer[0];
+	uint8_t __attribute__ ((aligned)) buffer[0];
 };
 
 template <
@@ -64,25 +64,25 @@ struct on_received_trait<T, 1> {
 };
 
 struct command_info_t {
-	command_type_t  type;
-	uint8_t         block_size;
 	command_base_t& command;
 	union {
 		void* _needed_for_mem_initializer;
 		void (*single_block)(const void* buffer);
 		void (*multi_block)(uint8_t block_from, uint8_t block_to, const void* buffer);
 	} on_received_function;
-
+	command_type_t  type;
+	uint8_t         block_size;
+	
 	template <
 		command_type_t _type,
 		typename       T
 	> COMMAND_INFO_DECL command_info_t(
 		command_t<_type, T>& _command,
 		typename on_received_trait<T, CommandTypeGetBlockCount(_type)>::on_received_function_t function
-	) : type(_type)
-	  , block_size(sizeof(T))
-	  , command(_command)
+	) : command(_command)
 	  , on_received_function{ reinterpret_cast<void*>(function) }
+	  , type(_type)
+	  , block_size(sizeof(T))
 	{}
 };
 

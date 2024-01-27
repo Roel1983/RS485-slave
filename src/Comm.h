@@ -1,7 +1,7 @@
 #ifndef COMM_H
 #define COMM_H
 
-#include "stdint.h"
+#include <stdint.h>
 
 typedef enum {
 	COMM_ERROR_NONE,
@@ -13,12 +13,16 @@ typedef enum {
 static_assert(sizeof(comm_error_t) == 1, "");
 #endif 
 
+#ifdef UNITTEST
+void CommReset();
+#endif
+
 void CommBegin();
 void CommLoop();
 
 void CommSetDeviceNr(uint8_t device_nr);
 void CommSetStripNr(uint8_t strip_nr);
 
-comm_error_t CommGetLastError();
+comm_error_t CommGetError();
 
 #endif

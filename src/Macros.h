@@ -5,8 +5,10 @@
 
 #ifdef UNITTEST
 #define PRIVATE
+#define INLINE
 #else
 #define PRIVATE static
+#define INLINE  inline
 #endif
 
 #endif
