@@ -7,6 +7,7 @@
 
 #include "CommandLib.h"
 #include "Macros.h"
+#include "Pins.h"
 
 #include "Comm.h"
 #include "Comm_private.h"
@@ -14,6 +15,7 @@
 static constexpr uint32_t comm_baudrate       = 115200;
 static constexpr uint8_t  comm_preamble_byte  = 0x55;
 static constexpr uint8_t  comm_preamble_count = 2;
+static constexpr active_low_pin_t comm_tx_en_pin{PIN17};
 
 PRIVATE volatile comm_error_t               comm_error = COMM_ERROR_NONE;
 PRIVATE comm_recv_isr_t                     comm_recv_isr = {0};
@@ -328,7 +330,7 @@ PRIVATE INLINE uint8_t CommIsrGetMyBlockNr(command_type_t command_type) {
 }
 
 PRIVATE INLINE void CommTxEnable() {
-	// TX_EN = true
+	comm_tx_en_pin.Set();
 	comm_send_txen = true;
 }
 
@@ -339,7 +341,7 @@ PRIVATE INLINE void CommTxDisable() {
 ISR(USART_TX_vect) 
 {
 	if (!comm_send_txen) {
-		//TX_EN = false;
+		comm_tx_en_pin.Reset();
 	}
 }
 

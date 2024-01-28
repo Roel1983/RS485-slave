@@ -1,10 +1,22 @@
 #include "io.h"
 
-uint8_t        DDRB;
+uint8_t                  DDRB;
 static constexpr uint8_t DDRB_initial_value = 0x00;
 
 uint8_t                  PORTB;
 static constexpr uint8_t PORTB_initial_value = 0x00;
+
+uint8_t                  DDRC;
+static constexpr uint8_t DDRC_initial_value = 0x00;
+
+uint8_t                  PORTC;
+static constexpr uint8_t PORTC_initial_value = 0x00;
+
+uint8_t                  DDRD;
+static constexpr uint8_t DDRD_initial_value = 0x00;
+
+uint8_t                  PORTD;
+static constexpr uint8_t PORTD_initial_value = 0x00;
 
                  uint8_t UCSR0A;
 static constexpr uint8_t UCSR0A_initial_value = 0x20;
@@ -27,6 +39,10 @@ static constexpr uint8_t UDR0_initial_value = 0x00;
 void FakeIoReset() {
 	DDRB   = DDRB_initial_value;
 	PORTB  = PORTB_initial_value;
+	DDRC   = DDRC_initial_value;
+	PORTC  = PORTC_initial_value;
+	DDRD   = DDRD_initial_value;
+	PORTD  = PORTD_initial_value;
 	
 	UCSR0A = UCSR0A_initial_value;
 	UCSR0B = UCSR0B_initial_value;

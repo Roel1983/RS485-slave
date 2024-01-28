@@ -15,26 +15,12 @@ void FakeIoReset();
 #define PB5 5
 #define PB6 6
 #define PB7 7
-
 extern uint8_t DDRB;
-#define DDB0 0
-#define DDB1 1
-#define DDB2 2
-#define DDB3 3
-#define DDB4 4
-#define DDB5 5
-#define DDB6 6
-#define DDB7 7
-
 extern uint8_t PORTB;
-#define PORTB0 0
-#define PORTB1 1
-#define PORTB2 2
-#define PORTB3 3
-#define PORTB4 4
-#define PORTB5 5
-#define PORTB6 6
-#define PORTB7 7
+extern uint8_t DDRC;
+extern uint8_t PORTC;
+extern uint8_t DDRD;
+extern uint8_t PORTD;
 
 extern uint8_t UCSR0A;
 #define MPCM0 0
