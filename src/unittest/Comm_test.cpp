@@ -14,7 +14,7 @@
 using namespace ::testing;
 
 extern PRIVATE volatile comm_error_t comm_error;
-extern PRIVATE comm_isr_t comm_isr;
+extern PRIVATE comm_recv_isr_t comm_recv_isr;
 
 static int      OnReceive_cmd_broadcast_called;
 static uint16_t	OnReceive_cmd_broadcast_value;
@@ -181,14 +181,14 @@ TEST_F(CommTest, CommGetError) {
 
 static void ISR_USART_RX_vect_signalError(uint8_t ucsr0a) {
 	comm_error = COMM_ERROR_NONE;
-	comm_isr.state, COMM_STATE_CRC;
+	comm_recv_isr.state, COMM_STATE_CRC;
 	
 	UDR0 = 0x42;
 	UCSR0A |= ucsr0a;
 	
 	isr_USART_RX_vect();
 	
-	EXPECT_EQ(comm_isr.state, COMM_STATE_PREAMBLE);
+	EXPECT_EQ(comm_recv_isr.state, COMM_STATE_PREAMBLE);
 	EXPECT_EQ(comm_error,     COMM_ERROR_SIGNAL);
 }
 
@@ -201,17 +201,17 @@ TEST_F(CommTest, ISR_USART_RX_vect_signalError_dataOverRun) {
 }
 
 TEST_F(CommTest, ISR_USART_RX_vect_skipReadSkip) {
-	comm_isr.crc = 0;
-	comm_isr.state= COMM_STATE_CRC;
-	comm_isr.command_info = &command_info_test_command_type_strip;
+	comm_recv_isr.crc = 0;
+	comm_recv_isr.state= COMM_STATE_CRC;
+	comm_recv_isr.command_info = &command_info_test_command_type_strip;
 	
 	uint8_t buffer[20];
 	memset(buffer, 0xFF, sizeof(buffer));
 	
-	comm_isr.skip_byte_count = 3;
-	comm_isr.read_byte_count = 4;
-	comm_isr.read_byte_pos   = buffer;
-	comm_isr.skip_byte_after_read_count = 5;
+	comm_recv_isr.skip_byte_count = 3;
+	comm_recv_isr.read_byte_count = 4;
+	comm_recv_isr.read_byte_pos   = buffer;
+	comm_recv_isr.skip_byte_after_read_count = 5;
 	
 	uint8_t expected_crc = 0;
 	for(int i = 0; i < 3 + 4 + 5 && !HasFailure(); i++) {
@@ -221,10 +221,10 @@ TEST_F(CommTest, ISR_USART_RX_vect_skipReadSkip) {
 		isr_USART_RX_vect();
 		
 		expected_crc += i;
-		EXPECT_EQ(comm_isr.crc, expected_crc);
+		EXPECT_EQ(comm_recv_isr.crc, expected_crc);
 		
 		EXPECT_EQ(comm_error, COMM_ERROR_NONE);
-		EXPECT_EQ(comm_isr.state, COMM_STATE_CRC);
+		EXPECT_EQ(comm_recv_isr.state, COMM_STATE_CRC);
 	}
 	
 	EXPECT_EQ(buffer[0], 3);
@@ -237,93 +237,93 @@ TEST_F(CommTest, ISR_USART_RX_vect_skipReadSkip) {
 	isr_USART_RX_vect();
 	
 	EXPECT_EQ(comm_error, COMM_ERROR_NONE);
-	EXPECT_EQ(comm_isr.state, COMM_STATE_PREAMBLE);
+	EXPECT_EQ(comm_recv_isr.state, COMM_STATE_PREAMBLE);
 }
 
 TEST_F(CommTest, ISR_USART_RX_vect_invalidCommState) {
-	comm_isr.state = (comm_state_t)0xff;
+	comm_recv_isr.state = (comm_state_t)0xff;
 	
 	isr_USART_RX_vect();
 	
-	EXPECT_EQ(comm_isr.state, COMM_STATE_PREAMBLE);
+	EXPECT_EQ(comm_recv_isr.state, COMM_STATE_PREAMBLE);
 }
 
 TEST_F(CommTest, CommIsrReceivePreamble_noPreamble) {
 	comm_error     = COMM_ERROR_NONE;
-	comm_isr.state = COMM_STATE_PREAMBLE;
+	comm_recv_isr.state = COMM_STATE_PREAMBLE;
 	
 	CommIsrReceivePreamble(0xAA);
 	
 	EXPECT_EQ(comm_error,     COMM_ERROR_DATA);
-	EXPECT_EQ(comm_isr.state, COMM_STATE_PREAMBLE);
+	EXPECT_EQ(comm_recv_isr.state, COMM_STATE_PREAMBLE);
 }
 
 TEST_F(CommTest, CommIsrReceivePreamble_halfPreamble) {
 	comm_error     = COMM_ERROR_NONE;
-	comm_isr.state = COMM_STATE_PREAMBLE;
+	comm_recv_isr.state = COMM_STATE_PREAMBLE;
 	
 	CommIsrReceivePreamble(0x55);
 	CommIsrReceivePreamble(0xAA);
 	
 	EXPECT_EQ(comm_error,     COMM_ERROR_DATA);
-	EXPECT_EQ(comm_isr.state, COMM_STATE_PREAMBLE);
+	EXPECT_EQ(comm_recv_isr.state, COMM_STATE_PREAMBLE);
 }
 
 TEST_F(CommTest, CommIsrReceivePreamble_completePreamble) {
 	comm_error     = COMM_ERROR_NONE;
-	comm_isr.state = COMM_STATE_PREAMBLE;
+	comm_recv_isr.state = COMM_STATE_PREAMBLE;
 	
 	CommIsrReceivePreamble(0x55);
 	CommIsrReceivePreamble(0x55);
 	
 	EXPECT_EQ(comm_error,     COMM_ERROR_NONE);
-	EXPECT_EQ(comm_isr.state, COMM_STATE_COMMAND_ID);
+	EXPECT_EQ(comm_recv_isr.state, COMM_STATE_COMMAND_ID);
 }
 
 TEST_F(CommTest, CommIsrReceiveCommandId_invalidCommandId) {
 	comm_error     = COMM_ERROR_NONE;
-	comm_isr.state = COMM_STATE_COMMAND_ID;
+	comm_recv_isr.state = COMM_STATE_COMMAND_ID;
 	
 	CommIsrReceiveCommandId(0xff);
 	
 	EXPECT_EQ(comm_error,     COMM_ERROR_DATA);
-	EXPECT_EQ(comm_isr.state, COMM_STATE_PREAMBLE);
+	EXPECT_EQ(comm_recv_isr.state, COMM_STATE_PREAMBLE);
 }
 
 TEST_F(CommTest, CommIsrReceiveCommandId) {
 	comm_error     = COMM_ERROR_NONE;
-	comm_isr.state = COMM_STATE_COMMAND_ID;
+	comm_recv_isr.state = COMM_STATE_COMMAND_ID;
 	
 	CommIsrReceiveCommandId(COMMAND_ID_cmd_device);
 	
 	EXPECT_EQ(comm_error,     COMM_ERROR_NONE);
-	EXPECT_EQ(comm_isr.command_info, &command_infos[COMMAND_ID_cmd_device]);
-	EXPECT_EQ(comm_isr.state, COMM_STATE_BLOCK_NR);
+	EXPECT_EQ(comm_recv_isr.command_info, &command_infos[COMMAND_ID_cmd_device]);
+	EXPECT_EQ(comm_recv_isr.state, COMM_STATE_BLOCK_NR);
 }
 
 TEST_F(CommTest, CommIsrReceiveCommandIdBroadCast_commandStateLocked) {
-	comm_isr.skip_byte_count = 0xFF;
-	comm_isr.read_byte_count = 0xFF;
-	comm_isr.skip_byte_after_read_count = 0xFF;
+	comm_recv_isr.skip_byte_count = 0xFF;
+	comm_recv_isr.read_byte_count = 0xFF;
+	comm_recv_isr.skip_byte_after_read_count = 0xFF;
 	
 	comm_error     = COMM_ERROR_NONE;
-	comm_isr.state = COMM_STATE_COMMAND_ID;
+	comm_recv_isr.state = COMM_STATE_COMMAND_ID;
 	
 	cmd_broadcast.state =COMMAND_STATE_READ_LOCKED;
 	
 	CommIsrReceiveCommandId(COMMAND_ID_cmd_broadcast);
 	
 	EXPECT_EQ(comm_error,     COMM_ERROR_BUSY);
-	EXPECT_EQ(comm_isr.command_info, &command_infos[COMMAND_ID_cmd_broadcast]);
-	EXPECT_EQ(comm_isr.skip_byte_count, sizeof(uint16_t));
-	EXPECT_EQ(comm_isr.read_byte_count, 0);
-	EXPECT_EQ(comm_isr.skip_byte_after_read_count, 0);
-	EXPECT_EQ(comm_isr.state, COMM_STATE_CRC);
+	EXPECT_EQ(comm_recv_isr.command_info, &command_infos[COMMAND_ID_cmd_broadcast]);
+	EXPECT_EQ(comm_recv_isr.skip_byte_count, sizeof(uint16_t));
+	EXPECT_EQ(comm_recv_isr.read_byte_count, 0);
+	EXPECT_EQ(comm_recv_isr.skip_byte_after_read_count, 0);
+	EXPECT_EQ(comm_recv_isr.state, COMM_STATE_CRC);
 }
 
 TEST_F(CommTest, CommIsrReceiveCommandIdBroadCast_commandStateUnlocked) {
 	comm_error     = COMM_ERROR_NONE;
-	comm_isr.state = COMM_STATE_COMMAND_ID;
+	comm_recv_isr.state = COMM_STATE_COMMAND_ID;
 	
 	cmd_broadcast.state = COMMAND_STATE_UNLOCKED;
 	
@@ -331,19 +331,19 @@ TEST_F(CommTest, CommIsrReceiveCommandIdBroadCast_commandStateUnlocked) {
 	
 	EXPECT_EQ(comm_error,               COMM_ERROR_NONE);
 	EXPECT_EQ(cmd_broadcast.state,      COMMAND_STATE_WRITE_LOCKED);
-	EXPECT_EQ(comm_isr.read_byte_pos,   (void*)cmd_broadcast.buffer);
-	EXPECT_EQ(comm_isr.read_byte_count, sizeof(uint16_t));	
-	EXPECT_EQ(comm_isr.state,           COMM_STATE_CRC);
+	EXPECT_EQ(comm_recv_isr.read_byte_pos,   (void*)cmd_broadcast.buffer);
+	EXPECT_EQ(comm_recv_isr.read_byte_count, sizeof(uint16_t));	
+	EXPECT_EQ(comm_recv_isr.state,           COMM_STATE_CRC);
 }
 
 TEST_F(CommTest, CommIsrReceiveBlockNr) {
-	comm_isr.block_nr = 0;
-	comm_isr.state = COMM_STATE_BLOCK_NR;
+	comm_recv_isr.block_nr = 0;
+	comm_recv_isr.state = COMM_STATE_BLOCK_NR;
 	
 	CommIsrReceiveBlockNr(42);
 	
-	EXPECT_EQ(comm_isr.block_nr, 42);
-	EXPECT_EQ(comm_isr.state, COMM_STATE_BLOCK_COUNT);
+	EXPECT_EQ(comm_recv_isr.block_nr, 42);
+	EXPECT_EQ(comm_recv_isr.state, COMM_STATE_BLOCK_COUNT);
 }
 
 TEST_F(CommTest, CommIsrReceiveBlockCount_commandStateLocked) {
@@ -352,24 +352,24 @@ TEST_F(CommTest, CommIsrReceiveBlockCount_commandStateLocked) {
 	
 	comm_error = COMM_ERROR_NONE;
 	
-	comm_isr.state = COMM_STATE_BLOCK_COUNT;
-	comm_isr.command_info = &command_info_test_command_type_strip;
+	comm_recv_isr.state = COMM_STATE_BLOCK_COUNT;
+	comm_recv_isr.command_info = &command_info_test_command_type_strip;
 	command_info_test_command_type_strip.command.state = COMMAND_STATE_READ_LOCKED;
 	
-	comm_isr.skip_byte_count            = 0xff;
-	comm_isr.read_byte_count            = 0xff;
-	comm_isr.skip_byte_after_read_count = 0xff;
+	comm_recv_isr.skip_byte_count            = 0xff;
+	comm_recv_isr.read_byte_count            = 0xff;
+	comm_recv_isr.skip_byte_after_read_count = 0xff;
 		
-	comm_isr.block_nr = 0;
+	comm_recv_isr.block_nr = 0;
 	CommIsrReceiveBlockCount(10);
 	
 	constexpr int block_size = sizeof(test_command_type_strip_t);
-	EXPECT_EQ(comm_isr.skip_byte_count,            10 * block_size);
-	EXPECT_EQ(comm_isr.read_byte_count,            0);
-	EXPECT_EQ(comm_isr.skip_byte_after_read_count, 0);
+	EXPECT_EQ(comm_recv_isr.skip_byte_count,            10 * block_size);
+	EXPECT_EQ(comm_recv_isr.read_byte_count,            0);
+	EXPECT_EQ(comm_recv_isr.skip_byte_after_read_count, 0);
 	
 	EXPECT_EQ(command_info_test_command_type_strip.command.state, COMMAND_STATE_READ_LOCKED);
-	EXPECT_EQ(comm_isr.state,                      COMM_STATE_CRC);
+	EXPECT_EQ(comm_recv_isr.state,                      COMM_STATE_CRC);
 	EXPECT_EQ(comm_error,                          COMM_ERROR_BUSY);
 }
 
@@ -392,23 +392,23 @@ static void _testCommIsrReceiveBlockCount(
 	
 	comm_error = COMM_ERROR_NONE;
 	
-	comm_isr.state = COMM_STATE_BLOCK_COUNT;
-	comm_isr.command_info = &command_info_test_command_type_strip;
+	comm_recv_isr.state = COMM_STATE_BLOCK_COUNT;
+	comm_recv_isr.command_info = &command_info_test_command_type_strip;
 	command_info_test_command_type_strip.command.state = COMMAND_STATE_UNLOCKED;
 	
-	comm_isr.skip_byte_count            = 0xff;
-	comm_isr.read_byte_count            = 0xff;
-	comm_isr.skip_byte_after_read_count = 0xff;
+	comm_recv_isr.skip_byte_count            = 0xff;
+	comm_recv_isr.read_byte_count            = 0xff;
+	comm_recv_isr.skip_byte_after_read_count = 0xff;
 		
-	comm_isr.block_nr = send_block_nr;
+	comm_recv_isr.block_nr = send_block_nr;
 	CommIsrReceiveBlockCount(send_block_count);
 	
 	constexpr int block_size = sizeof(test_command_type_strip_t);
-	EXPECT_EQ(comm_isr.skip_byte_count,            expected_skip_block_count * block_size);
-	EXPECT_EQ(comm_isr.read_byte_count,            expected_read_block_count * block_size);
+	EXPECT_EQ(comm_recv_isr.skip_byte_count,            expected_skip_block_count * block_size);
+	EXPECT_EQ(comm_recv_isr.read_byte_count,            expected_read_block_count * block_size);
 	if(expected_read_block_count) {
 		EXPECT_EQ(
-				comm_isr.read_byte_pos,
+				comm_recv_isr.read_byte_pos,
 				&command_info_test_command_type_strip.command.buffer[expected_write_pos * block_size]
 		);
 		EXPECT_EQ(
@@ -416,10 +416,10 @@ static void _testCommIsrReceiveBlockCount(
 				expected_processed_block_bits
 		);
 	}
-	EXPECT_EQ(comm_isr.skip_byte_after_read_count, expected_skip_byte_after_read_block_count * block_size);
+	EXPECT_EQ(comm_recv_isr.skip_byte_after_read_count, expected_skip_byte_after_read_block_count * block_size);
 	
 	EXPECT_EQ(command_info_test_command_type_strip.command.state, expected_command_state);
-	EXPECT_EQ(comm_isr.state,                      COMM_STATE_CRC);
+	EXPECT_EQ(comm_recv_isr.state,                      COMM_STATE_CRC);
 	
 	EXPECT_EQ(comm_error,                          COMM_ERROR_NONE);
 }
@@ -494,17 +494,17 @@ static void _testCommIsrReceiveCrc(
 	
 ) {
 	comm_error = COMM_ERROR_NONE;
-	comm_isr.state = COMM_STATE_CRC;
+	comm_recv_isr.state = COMM_STATE_CRC;
 	
-	comm_isr.command_info = &command_info_test_command_type_strip;
+	comm_recv_isr.command_info = &command_info_test_command_type_strip;
 	command_info_test_command_type_strip.command.state = command_state;
 	
-	comm_isr.crc = crc;
+	comm_recv_isr.crc = crc;
 	CommIsrReceiveCrc(0x42);
 	
 	EXPECT_EQ(command_info_test_command_type_strip.command.state, expected_command_state);
 	EXPECT_EQ(comm_error,     expected_comm_error);
-	EXPECT_EQ(comm_isr.state, expected_comm_state);
+	EXPECT_EQ(comm_recv_isr.state, expected_comm_state);
 }
 
 TEST_F(CommTest, CommIsrReceiveCrc_missmatch_CommandStateWriteLocked) {
@@ -572,7 +572,7 @@ TEST_F(CommTest, ISR_USART_RX_vect_receiveBroadCastCommand) {
 	Send(buffer, sizeof(buffer), /*add_crc=*/true);
 	
 	EXPECT_EQ(comm_error,     COMM_ERROR_NONE);
-	EXPECT_EQ(comm_isr.state, COMM_STATE_PREAMBLE);
+	EXPECT_EQ(comm_recv_isr.state, COMM_STATE_PREAMBLE);
 	EXPECT_EQ(cmd_broadcast.state, COMMAND_STATE_READ_LOCKED);
 	EXPECT_EQ(cmd_broadcast.buffer[0], 0x3412);
 	
@@ -611,7 +611,7 @@ TEST_F(CommTest, ISR_USART_RX_vect_receiveDeviceCommand) {
 	Send(buffer, sizeof(buffer), /*add_crc=*/true);
 	
 	EXPECT_EQ(comm_error,       COMM_ERROR_NONE);
-	EXPECT_EQ(comm_isr.state,   COMM_STATE_PREAMBLE);
+	EXPECT_EQ(comm_recv_isr.state,   COMM_STATE_PREAMBLE);
 	EXPECT_EQ(cmd_device.state, COMMAND_STATE_READ_LOCKED);
 	EXPECT_EQ(cmd_device.buffer[0], 0x2221);
 	
@@ -650,7 +650,7 @@ TEST_F(CommTest, ISR_USART_RX_vect_receiveStripCommand) {
 	Send(buffer, sizeof(buffer), /*add_crc=*/true);
 	
 	EXPECT_EQ(comm_error,       COMM_ERROR_NONE);
-	EXPECT_EQ(comm_isr.state,   COMM_STATE_PREAMBLE);
+	EXPECT_EQ(comm_recv_isr.state,   COMM_STATE_PREAMBLE);
 	EXPECT_EQ(cmd_strip.state, COMMAND_STATE_READ_LOCKED);
 	EXPECT_EQ(cmd_strip.buffer[0], 0x2222);
 	EXPECT_EQ(cmd_strip.buffer[1], 0x3333);
@@ -698,7 +698,7 @@ TEST_F(CommTest, ISR_USART_RX_vect_receiveBroadcast_isrAllowed_Command) {
 	ASSERT_TRUE(expected_OnReceive_cmd_broadcast_isr_allowed.empty());
 	
 	EXPECT_EQ(comm_error,     COMM_ERROR_NONE);
-	EXPECT_EQ(comm_isr.state, COMM_STATE_PREAMBLE);
+	EXPECT_EQ(comm_recv_isr.state, COMM_STATE_PREAMBLE);
 	EXPECT_EQ(cmd_broadcast_isr_allowed.state, COMMAND_STATE_READ_LOCKED);
 	EXPECT_EQ(cmd_broadcast_isr_allowed.buffer[0], 0x3412);
 	

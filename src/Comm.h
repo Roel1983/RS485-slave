@@ -10,8 +10,22 @@ typedef enum {
 	COMM_ERROR_BUSY
 } comm_error_t;
 #ifndef UNITTEST
-static_assert(sizeof(comm_error_t) == 1, "");
-#endif 
+static_assert(sizeof(comm_error_t) == 1, "comm_error_t must by atomic");
+#endif
+
+struct comm_send_message_base_t;
+comm_send_message_base_t * const SEND_MESSAGE_NEXT_UNUSED = (comm_send_message_base_t*)1;
+struct comm_send_message_base_t {
+	comm_send_message_base_t* next = SEND_MESSAGE_NEXT_UNUSED;
+	uint8_t                   size;
+	uint8_t                   command_id;
+	uint8_t                   value[0];
+};
+
+template<uint8_t _command_id, typename T>
+struct comm_send_message_t : comm_send_message_base_t {
+	volatile T value;
+};
 
 #ifdef UNITTEST
 void CommReset();
@@ -19,6 +33,17 @@ void CommReset();
 
 void CommBegin();
 void CommLoop();
+
+inline bool CommCanUseSendMessage(comm_send_message_base_t& message) {
+	return message.next == SEND_MESSAGE_NEXT_UNUSED;
+}
+
+void CommSend(uint8_t command_id, comm_send_message_base_t& send_message, uint8_t size);
+
+template<uint8_t command_id, typename T>
+void CommSend(comm_send_message_t<command_id, T>& send_message) {
+	CommSend(command_id, send_message, sizeof(T));
+}
 
 void CommSetDeviceNr(uint8_t device_nr);
 void CommSetStripNr(uint8_t strip_nr);

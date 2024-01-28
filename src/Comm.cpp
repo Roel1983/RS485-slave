@@ -15,9 +15,12 @@ static constexpr uint32_t comm_baudrate       = 115200;
 static constexpr uint8_t  comm_preamble_byte  = 0x55;
 static constexpr uint8_t  comm_preamble_count = 2;
 
-PRIVATE volatile comm_error_t comm_error = COMM_ERROR_NONE;
-
-PRIVATE comm_isr_t comm_isr = {0};
+PRIVATE volatile comm_error_t               comm_error = COMM_ERROR_NONE;
+PRIVATE comm_recv_isr_t                     comm_recv_isr = {0};
+PRIVATE comm_send_isr_t                     comm_send_isr;
+PRIVATE volatile bool                       comm_send_txen          = false;	
+PRIVATE comm_send_message_base_t * volatile comm_send_message_begin = nullptr;
+PRIVATE comm_send_message_base_t * volatile comm_send_message_end   = nullptr;
 
 static volatile union {
 	struct __attribute__((packed)) {
@@ -45,7 +48,7 @@ PRIVATE INLINE uint8_t CommIsrGetMyBlockNr(command_type_t command_type);
 void CommReset() {
 	comm_error = COMM_ERROR_NONE;
 	memset((void*)&comm_my_block_nrs, 0x00, sizeof(comm_my_block_nrs));
-	memset(&comm_isr, 0x00, sizeof(comm_isr));
+	memset(&comm_recv_isr, 0x00, sizeof(comm_recv_isr));
 }
 #endif
 
@@ -78,6 +81,202 @@ void CommLoop() {
 	}
 }
 
+comm_error_t CommGetError() {
+	const comm_error_t error = comm_error;
+	comm_error = COMM_ERROR_NONE;
+	return error;
+}
+
+ISR(USART_RX_vect) {
+	uint8_t data_byte = UDR0;
+	if((UCSR0A & ((1 << FE0) | (1 << DOR0) | (1 << UPE0))) != 0) {
+		CommIsrRaiseError(COMM_ERROR_SIGNAL);
+		comm_recv_isr.state = COMM_STATE_PREAMBLE;
+	} else {
+		comm_recv_isr.crc += data_byte;
+		
+		if (comm_recv_isr.skip_byte_count) {
+			--comm_recv_isr.skip_byte_count;
+			return;
+		}
+		if (comm_recv_isr.read_byte_count) {
+			--comm_recv_isr.read_byte_count;
+			*(comm_recv_isr.read_byte_pos++) = data_byte;
+			return;
+		}
+		if (comm_recv_isr.skip_byte_after_read_count) {
+			comm_recv_isr.skip_byte_count = comm_recv_isr.skip_byte_after_read_count - 1;
+			comm_recv_isr.skip_byte_after_read_count = 0;
+			return;
+		}
+		
+		switch (comm_recv_isr.state) {
+		case COMM_STATE_PREAMBLE:
+			CommIsrReceivePreamble(data_byte);
+			return;
+		case COMM_STATE_COMMAND_ID:
+			CommIsrReceiveCommandId(data_byte);
+			return;
+		case COMM_STATE_BLOCK_NR:
+			CommIsrReceiveBlockNr(data_byte);
+			return;
+		case COMM_STATE_BLOCK_COUNT:
+			CommIsrReceiveBlockCount(data_byte);
+			return;
+		case COMM_STATE_CRC:
+			CommIsrReceiveCrc(data_byte);
+			return;
+		default:
+			comm_recv_isr.state = COMM_STATE_PREAMBLE;
+		}
+	}
+}
+
+PRIVATE INLINE void CommIsrReceivePreamble(const uint8_t data_byte) {
+	if (data_byte != comm_preamble_byte) {
+		comm_recv_isr.preamble_count = 0;
+		CommIsrRaiseError(COMM_ERROR_DATA);
+		return;
+	}
+	if (++comm_recv_isr.preamble_count >= comm_preamble_count) {
+		comm_recv_isr.preamble_count = 0;
+		comm_recv_isr.crc            = 0;
+		comm_recv_isr.state          = COMM_STATE_COMMAND_ID;
+	}
+}
+
+PRIVATE INLINE void CommIsrReceiveCommandId(const uint8_t data_byte) {
+	const uint8_t command_id = data_byte;
+	
+	if (command_id >= ARRAY_SIZE(command_infos)) {
+		CommIsrRaiseError(COMM_ERROR_DATA);
+		comm_recv_isr.state = COMM_STATE_PREAMBLE;
+		return;	
+	}
+	comm_recv_isr.command_info = &command_infos[command_id];
+	
+	if (comm_recv_isr.command_info->type == COMMAND_TYPE_BROADCAST) {
+		CommIsrReceiveCommandIdBroadCast();
+		return;
+	}
+	comm_recv_isr.state = COMM_STATE_BLOCK_NR;
+}
+
+PRIVATE INLINE void CommIsrReceiveCommandIdBroadCast() {
+	command_base_t& command(comm_recv_isr.command_info->command);
+	
+	if (command.state == COMMAND_STATE_READ_LOCKED) {
+		comm_recv_isr.skip_byte_count = comm_recv_isr.command_info->block_size;
+		comm_recv_isr.read_byte_count = 0;
+		comm_recv_isr.skip_byte_after_read_count = 0;
+		comm_recv_isr.state           = COMM_STATE_CRC;
+		CommIsrRaiseError(COMM_ERROR_BUSY);
+		return;
+	}
+	command.state = COMMAND_STATE_WRITE_LOCKED;
+	
+	comm_recv_isr.read_byte_pos   = command.buffer;
+	comm_recv_isr.read_byte_count = comm_recv_isr.command_info->block_size;
+	comm_recv_isr.state           = COMM_STATE_CRC;
+}
+
+PRIVATE INLINE void CommIsrReceiveBlockNr(const uint8_t data_byte) {
+	comm_recv_isr.block_nr  = data_byte;
+	comm_recv_isr.state     = COMM_STATE_BLOCK_COUNT;
+}
+
+PRIVATE INLINE void CommIsrReceiveBlockCount(const uint8_t data_byte) {
+	const uint8_t block_count = data_byte;
+	
+	command_base_t& command(comm_recv_isr.command_info->command);
+	if (command.state == COMMAND_STATE_READ_LOCKED) {
+		comm_recv_isr.skip_byte_count = block_count * comm_recv_isr.command_info->block_size;
+		comm_recv_isr.read_byte_count = 0;
+		comm_recv_isr.skip_byte_after_read_count = 0;
+		comm_recv_isr.state = COMM_STATE_CRC;
+		
+		CommIsrRaiseError(COMM_ERROR_BUSY);
+		return;
+	}
+	
+	const command_type_t command_type = comm_recv_isr.command_info->type;
+	uint8_t my_block_nr    = CommIsrGetMyBlockNr(command_type);
+	uint8_t my_block_count = CommandTypeGetBlockCount(command_type);
+	
+	uint8_t skip_before_read_block_count;
+	uint8_t read_block_count;
+	uint8_t skip_after_read_block_count;
+	
+	uint8_t block_size = comm_recv_isr.command_info->block_size;
+	
+	if (comm_recv_isr.block_nr <= my_block_nr) {
+		skip_before_read_block_count = my_block_nr - comm_recv_isr.block_nr;
+		if (skip_before_read_block_count >= block_count) {
+			skip_before_read_block_count = block_count;
+			comm_recv_isr.read_byte_count = 0;
+			comm_recv_isr.skip_byte_after_read_count = 0;
+		} else {
+			read_block_count = block_count - skip_before_read_block_count;
+			if (read_block_count > my_block_count) {
+				skip_after_read_block_count = read_block_count - my_block_count;
+				comm_recv_isr.skip_byte_after_read_count = skip_after_read_block_count * block_size;
+				read_block_count = my_block_count;
+			} else {
+				comm_recv_isr.skip_byte_after_read_count = 0;
+			}
+			comm_recv_isr.read_byte_count = read_block_count * block_size;
+			comm_recv_isr.read_byte_pos   = comm_recv_isr.command_info->command.buffer;
+			command.processed_block_bits = (1 << read_block_count) - 1;
+		}
+		comm_recv_isr.skip_byte_count = skip_before_read_block_count * block_size;
+	} else {
+		uint8_t my_end_block_nr = my_block_nr + my_block_count;
+		read_block_count = (comm_recv_isr.block_nr < my_end_block_nr)
+				? my_end_block_nr - comm_recv_isr.block_nr
+				: 0;
+		if (read_block_count >= block_count) {
+			read_block_count = block_count;
+			comm_recv_isr.skip_byte_after_read_count = 0;
+			comm_recv_isr.skip_byte_count = 0;
+		} else {
+			skip_after_read_block_count = block_count - read_block_count;
+			comm_recv_isr.skip_byte_after_read_count = skip_after_read_block_count * block_size;
+			comm_recv_isr.skip_byte_count = 0;
+		}
+		uint8_t read_block_offset = (comm_recv_isr.block_nr - my_block_nr);
+		command.processed_block_bits = ((1 << read_block_count) - 1) << read_block_offset;
+		
+		comm_recv_isr.read_byte_count = read_block_count * block_size;
+		comm_recv_isr.read_byte_pos   = comm_recv_isr.command_info->command.buffer
+		                         + read_block_offset * block_size;
+		
+	}
+	if (comm_recv_isr.read_byte_count) {
+		command.state = COMMAND_STATE_WRITE_LOCKED;
+	}
+	comm_recv_isr.state = COMM_STATE_CRC;
+}
+
+PRIVATE INLINE void CommIsrReceiveCrc(const uint8_t data_byte) {
+	const command_info_t& command_info(*comm_recv_isr.command_info);
+	command_base_t&       command(command_info.command);
+	
+	if (comm_recv_isr.crc != 0) {
+		command.state = COMMAND_STATE_UNLOCKED;
+		CommIsrRaiseError(COMM_ERROR_DATA);
+		comm_recv_isr.state = COMM_STATE_PREAMBLE;
+		return;
+	}
+	if (command.state == COMMAND_STATE_WRITE_LOCKED) {
+		command.state = COMMAND_STATE_READ_LOCKED;
+		
+		if (command_info.fire == COMMAND_FIRE_ALLOWED_FROM_ISR) {
+			CommFire(command_info);
+		}
+	}
+	comm_recv_isr.state = COMM_STATE_PREAMBLE;
+}
+
 PRIVATE INLINE void CommFire(const command_info_t& command_info) {
 	command_base_t& command(command_info.command);
 	if (CommandTypeGetBlockCount(command_info.type) == 1) {
@@ -106,202 +305,6 @@ PRIVATE INLINE void CommFire(const command_info_t& command_info) {
 	}
 }
 
-comm_error_t CommGetError() {
-	const comm_error_t error = comm_error;
-	comm_error = COMM_ERROR_NONE;
-	return error;
-}
-
-ISR(USART_RX_vect) {
-	uint8_t data_byte = UDR0;
-	if((UCSR0A & ((1 << FE0) | (1 << DOR0) | (1 << UPE0))) != 0) {
-		CommIsrRaiseError(COMM_ERROR_SIGNAL);
-		comm_isr.state = COMM_STATE_PREAMBLE;
-	} else {
-		comm_isr.crc += data_byte;
-		
-		if (comm_isr.skip_byte_count) {
-			--comm_isr.skip_byte_count;
-			return;
-		}
-		if (comm_isr.read_byte_count) {
-			--comm_isr.read_byte_count;
-			*(comm_isr.read_byte_pos++) = data_byte;
-			return;
-		}
-		if (comm_isr.skip_byte_after_read_count) {
-			comm_isr.skip_byte_count = comm_isr.skip_byte_after_read_count - 1;
-			comm_isr.skip_byte_after_read_count = 0;
-			return;
-		}
-		
-		switch (comm_isr.state) {
-		case COMM_STATE_PREAMBLE:
-			CommIsrReceivePreamble(data_byte);
-			return;
-		case COMM_STATE_COMMAND_ID:
-			CommIsrReceiveCommandId(data_byte);
-			return;
-		case COMM_STATE_BLOCK_NR:
-			CommIsrReceiveBlockNr(data_byte);
-			return;
-		case COMM_STATE_BLOCK_COUNT:
-			CommIsrReceiveBlockCount(data_byte);
-			return;
-		case COMM_STATE_CRC:
-			CommIsrReceiveCrc(data_byte);
-			return;
-		default:
-			comm_isr.state = COMM_STATE_PREAMBLE;
-		}
-	}
-}
-
-PRIVATE INLINE void CommIsrReceivePreamble(const uint8_t data_byte) {
-	if (data_byte != comm_preamble_byte) {
-		comm_isr.preamble_count = 0;
-		CommIsrRaiseError(COMM_ERROR_DATA);
-		return;
-	}
-	if (++comm_isr.preamble_count >= comm_preamble_count) {
-		comm_isr.preamble_count = 0;
-		comm_isr.crc            = 0;
-		comm_isr.state          = COMM_STATE_COMMAND_ID;
-	}
-}
-
-PRIVATE INLINE void CommIsrReceiveCommandId(const uint8_t data_byte) {
-	const uint8_t command_id = data_byte;
-	
-	if (command_id >= ARRAY_SIZE(command_infos)) {
-		CommIsrRaiseError(COMM_ERROR_DATA);
-		comm_isr.state = COMM_STATE_PREAMBLE;
-		return;	
-	}
-	comm_isr.command_info = &command_infos[command_id];
-	
-	if (comm_isr.command_info->type == COMMAND_TYPE_BROADCAST) {
-		CommIsrReceiveCommandIdBroadCast();
-		return;
-	}
-	comm_isr.state = COMM_STATE_BLOCK_NR;
-}
-
-PRIVATE INLINE void CommIsrReceiveCommandIdBroadCast() {
-	command_base_t& command(comm_isr.command_info->command);
-	
-	if (command.state == COMMAND_STATE_READ_LOCKED) {
-		comm_isr.skip_byte_count = comm_isr.command_info->block_size;
-		comm_isr.read_byte_count = 0;
-		comm_isr.skip_byte_after_read_count = 0;
-		comm_isr.state           = COMM_STATE_CRC;
-		CommIsrRaiseError(COMM_ERROR_BUSY);
-		return;
-	}
-	command.state = COMMAND_STATE_WRITE_LOCKED;
-	
-	comm_isr.read_byte_pos   = command.buffer;
-	comm_isr.read_byte_count = comm_isr.command_info->block_size;
-	comm_isr.state           = COMM_STATE_CRC;
-}
-
-PRIVATE INLINE void CommIsrReceiveBlockNr(const uint8_t data_byte) {
-	comm_isr.block_nr  = data_byte;
-	comm_isr.state     = COMM_STATE_BLOCK_COUNT;
-}
-
-PRIVATE INLINE void CommIsrReceiveBlockCount(const uint8_t data_byte) {
-	const uint8_t block_count = data_byte;
-	
-	command_base_t& command(comm_isr.command_info->command);
-	if (command.state == COMMAND_STATE_READ_LOCKED) {
-		comm_isr.skip_byte_count = block_count * comm_isr.command_info->block_size;
-		comm_isr.read_byte_count = 0;
-		comm_isr.skip_byte_after_read_count = 0;
-		comm_isr.state = COMM_STATE_CRC;
-		
-		CommIsrRaiseError(COMM_ERROR_BUSY);
-		return;
-	}
-	
-	const command_type_t command_type = comm_isr.command_info->type;
-	uint8_t my_block_nr    = CommIsrGetMyBlockNr(command_type);
-	uint8_t my_block_count = CommandTypeGetBlockCount(command_type);
-	
-	uint8_t skip_before_read_block_count;
-	uint8_t read_block_count;
-	uint8_t skip_after_read_block_count;
-	
-	uint8_t block_size = comm_isr.command_info->block_size;
-	
-	if (comm_isr.block_nr <= my_block_nr) {
-		skip_before_read_block_count = my_block_nr - comm_isr.block_nr;
-		if (skip_before_read_block_count >= block_count) {
-			skip_before_read_block_count = block_count;
-			comm_isr.read_byte_count = 0;
-			comm_isr.skip_byte_after_read_count = 0;
-		} else {
-			read_block_count = block_count - skip_before_read_block_count;
-			if (read_block_count > my_block_count) {
-				skip_after_read_block_count = read_block_count - my_block_count;
-				comm_isr.skip_byte_after_read_count = skip_after_read_block_count * block_size;
-				read_block_count = my_block_count;
-			} else {
-				comm_isr.skip_byte_after_read_count = 0;
-			}
-			comm_isr.read_byte_count = read_block_count * block_size;
-			comm_isr.read_byte_pos   = comm_isr.command_info->command.buffer;
-			command.processed_block_bits = (1 << read_block_count) - 1;
-		}
-		comm_isr.skip_byte_count = skip_before_read_block_count * block_size;
-	} else {
-		uint8_t my_end_block_nr = my_block_nr + my_block_count;
-		read_block_count = (comm_isr.block_nr < my_end_block_nr)
-				? my_end_block_nr - comm_isr.block_nr
-				: 0;
-		if (read_block_count >= block_count) {
-			read_block_count = block_count;
-			comm_isr.skip_byte_after_read_count = 0;
-			comm_isr.skip_byte_count = 0;
-		} else {
-			skip_after_read_block_count = block_count - read_block_count;
-			comm_isr.skip_byte_after_read_count = skip_after_read_block_count * block_size;
-			comm_isr.skip_byte_count = 0;
-		}
-		uint8_t read_block_offset = (comm_isr.block_nr - my_block_nr);
-		command.processed_block_bits = ((1 << read_block_count) - 1) << read_block_offset;
-		
-		comm_isr.read_byte_count = read_block_count * block_size;
-		comm_isr.read_byte_pos   = comm_isr.command_info->command.buffer
-		                         + read_block_offset * block_size;
-		
-	}
-	if (comm_isr.read_byte_count) {
-		command.state = COMMAND_STATE_WRITE_LOCKED;
-	}
-	comm_isr.state = COMM_STATE_CRC;
-}
-
-PRIVATE INLINE void CommIsrReceiveCrc(const uint8_t data_byte) {
-	const command_info_t& command_info(*comm_isr.command_info);
-	command_base_t&       command(command_info.command);
-	
-	if (comm_isr.crc != 0) {
-		command.state = COMMAND_STATE_UNLOCKED;
-		CommIsrRaiseError(COMM_ERROR_DATA);
-		comm_isr.state = COMM_STATE_PREAMBLE;
-		return;
-	}
-	if (command.state == COMMAND_STATE_WRITE_LOCKED) {
-		command.state = COMMAND_STATE_READ_LOCKED;
-		
-		if (command_info.fire == COMMAND_FIRE_ALLOWED_FROM_ISR) {
-			CommFire(command_info);
-		}
-	}
-	comm_isr.state = COMM_STATE_PREAMBLE;
-}
-
 PRIVATE INLINE void CommIsrRaiseError(comm_error_t error) {
 	if (comm_error == COMM_ERROR_NONE) {
 		comm_error = error;
@@ -322,4 +325,76 @@ void CommSetStripNr(uint8_t strip_nr) {
 
 PRIVATE INLINE uint8_t CommIsrGetMyBlockNr(command_type_t command_type) {
 	return comm_my_block_nrs.by_type[command_type - 1];
+}
+
+PRIVATE INLINE void CommTxEnable() {
+	// TX_EN = true
+	comm_send_txen = true;
+}
+
+PRIVATE INLINE void CommTxDisable() {
+	comm_send_txen = false;
+}
+
+ISR(USART_TX_vect) 
+{
+	if (!comm_send_txen) {
+		//TX_EN = false;
+	}
+}
+
+void CommSend(
+	uint8_t command_id, 
+	comm_send_message_base_t& send_message,	
+	uint8_t size
+) {
+	send_message.next       = nullptr;
+	send_message.size       = size;
+	send_message.command_id = command_id;
+	
+	UCSR0B &= ~(1<<UDRIE0);
+	if(comm_send_message_end) {
+		comm_send_message_end->next = &send_message;
+	}
+	comm_send_message_end = &send_message;
+	CommTxEnable();
+	
+	UCSR0B |= (1<<UDRIE0);
+}
+
+ISR(USART_UDRE_vect)
+{
+	if(comm_send_isr.count) {
+		--comm_send_isr.count;
+		uint8_t b = *(comm_send_isr.pos++);
+		comm_send_isr.crc -= b;
+		UDR0 = b;
+		return;
+	}
+	
+	switch(comm_send_isr.state) {
+	case COMM_SEND_PREAMBLE:
+		if(!comm_send_message_begin) {
+			CommTxDisable();
+			UCSR0B &= ~(1<<UDRIE0);
+			return;
+		}
+		CommTxEnable();
+		UDR0 = comm_preamble_byte;
+		if(++comm_send_isr.preamble_count >= comm_preamble_count) {
+			comm_send_isr.pos   = &comm_send_message_begin->value[0];
+			comm_send_isr.count = comm_send_message_begin->size;
+			comm_send_isr.crc   = 0;
+			comm_send_isr.state = COMM_SEND_CRC;
+		}
+		return;
+	case COMM_SEND_CRC:
+		UDR0 = comm_send_isr.crc;
+		
+		comm_send_message_base_t* next = comm_send_message_begin->next;
+		comm_send_message_begin->next  = SEND_MESSAGE_NEXT_UNUSED;
+		comm_send_message_begin        = next;
+		comm_send_isr.state = COMM_SEND_PREAMBLE;
+		return;
+	}
 }
