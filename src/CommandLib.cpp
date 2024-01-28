@@ -21,24 +21,4 @@ void CommandLibReset() {
 		command_infos[i].command.state = COMMAND_STATE_UNLOCKED;
 	}
 }
-#else
-
-bool OnReceive_cmd_broadcast(const uint16_t& value) {
-	return true;
-}
-
-bool OnReceive_cmd_device(const uint16_t& value) {
-	return true;
-}
-
-bool OnReceive_cmd_strip(uint8_t relative_block_nr, const uint16_t& value) {
-	return true;
-}
-
-bool OnReceive_cmd_broadcast_isr_allowed(const uint16_t& value) {
-	return true;
-}
-
 #endif
-
-

@@ -36,21 +36,34 @@ static volatile union {
 }};
 
 PRIVATE INLINE void CommIsrRaiseError(comm_error_t error);
-PRIVATE INLINE void CommFire(const command_info_t& command_info);
+PRIVATE INLINE bool CommIsrReceiveBody(const uint8_t data_byte);
 PRIVATE INLINE void CommIsrReceivePreamble(const uint8_t data_byte);
 PRIVATE INLINE void CommIsrReceiveCommandId(const uint8_t data_byte);
 PRIVATE INLINE void CommIsrReceiveCommandIdBroadCast();
 PRIVATE INLINE void CommIsrReceiveBlockNr(const uint8_t data_byte);
 PRIVATE INLINE void CommIsrReceiveBlockCount(const uint8_t data_byte);
 PRIVATE INLINE void CommIsrReceiveCrc(const uint8_t data_byte);
+PRIVATE INLINE void CommFire(const command_info_t& command_info);
 
 PRIVATE INLINE uint8_t CommIsrGetMyBlockNr(command_type_t command_type);
+
+PRIVATE INLINE void CommTxEnable();
+PRIVATE INLINE void CommTxDisable();
+PRIVATE INLINE bool CommIsrSendBody();
+PRIVATE INLINE void CommIsrSendPreamble();
+PRIVATE INLINE bool CommIsrSendCommandId();
+PRIVATE INLINE void CommIsrSendCrc();
 
 #ifdef UNITTEST
 void CommReset() {
 	comm_error = COMM_ERROR_NONE;
 	memset((void*)&comm_my_block_nrs, 0x00, sizeof(comm_my_block_nrs));
 	memset(&comm_recv_isr, 0x00, sizeof(comm_recv_isr));
+	
+	memset(&comm_send_isr, 0x00, sizeof(comm_send_isr));
+	comm_send_txen          = false;	
+	comm_send_message_begin = nullptr;
+	comm_send_message_end   = nullptr;
 }
 #endif
 
@@ -71,6 +84,9 @@ void CommBegin() {
 	       | (1<<TXEN0)
 	       | (1<<TXCIE0)
 	       | (1<<RXCIE0);
+
+	comm_tx_en_pin.pin.port_reg.ddr |= comm_tx_en_pin.pin.bit_mask; // TODO improve Pins.h
+	comm_tx_en_pin.Reset();
 }
 
 void CommLoop() {
@@ -93,22 +109,12 @@ ISR(USART_RX_vect) {
 	uint8_t data_byte = UDR0;
 	if((UCSR0A & ((1 << FE0) | (1 << DOR0) | (1 << UPE0))) != 0) {
 		CommIsrRaiseError(COMM_ERROR_SIGNAL);
-		comm_recv_isr.state = COMM_STATE_PREAMBLE;
+		comm_recv_isr.preamble_count = 0;
+		comm_recv_isr.state          = COMM_STATE_PREAMBLE;
 	} else {
 		comm_recv_isr.crc += data_byte;
 		
-		if (comm_recv_isr.skip_byte_count) {
-			--comm_recv_isr.skip_byte_count;
-			return;
-		}
-		if (comm_recv_isr.read_byte_count) {
-			--comm_recv_isr.read_byte_count;
-			*(comm_recv_isr.read_byte_pos++) = data_byte;
-			return;
-		}
-		if (comm_recv_isr.skip_byte_after_read_count) {
-			comm_recv_isr.skip_byte_count = comm_recv_isr.skip_byte_after_read_count - 1;
-			comm_recv_isr.skip_byte_after_read_count = 0;
+		if(CommIsrReceiveBody(data_byte)) {
 			return;
 		}
 		
@@ -129,9 +135,28 @@ ISR(USART_RX_vect) {
 			CommIsrReceiveCrc(data_byte);
 			return;
 		default:
-			comm_recv_isr.state = COMM_STATE_PREAMBLE;
+			comm_recv_isr.preamble_count = 0;
+			comm_recv_isr.state          = COMM_STATE_PREAMBLE;
 		}
 	}
+}
+
+PRIVATE INLINE bool CommIsrReceiveBody(const uint8_t data_byte) {
+	if (comm_recv_isr.skip_byte_count) {
+		--comm_recv_isr.skip_byte_count;
+		return true;
+	}
+	if (comm_recv_isr.read_byte_count) {
+		--comm_recv_isr.read_byte_count;
+		*(comm_recv_isr.read_byte_pos++) = data_byte;
+		return true;
+	}
+	if (comm_recv_isr.skip_byte_after_read_count) {
+		comm_recv_isr.skip_byte_count = comm_recv_isr.skip_byte_after_read_count - 1;
+		comm_recv_isr.skip_byte_after_read_count = 0;
+		return true;
+	}
+	return false;
 }
 
 PRIVATE INLINE void CommIsrReceivePreamble(const uint8_t data_byte) {
@@ -141,7 +166,6 @@ PRIVATE INLINE void CommIsrReceivePreamble(const uint8_t data_byte) {
 		return;
 	}
 	if (++comm_recv_isr.preamble_count >= comm_preamble_count) {
-		comm_recv_isr.preamble_count = 0;
 		comm_recv_isr.crc            = 0;
 		comm_recv_isr.state          = COMM_STATE_COMMAND_ID;
 	}
@@ -276,7 +300,8 @@ PRIVATE INLINE void CommIsrReceiveCrc(const uint8_t data_byte) {
 			CommFire(command_info);
 		}
 	}
-	comm_recv_isr.state = COMM_STATE_PREAMBLE;
+	comm_recv_isr.preamble_count = 0;
+	comm_recv_isr.state          = COMM_STATE_PREAMBLE;
 }
 
 PRIVATE INLINE void CommFire(const command_info_t& command_info) {
@@ -357,46 +382,81 @@ void CommSend(
 	UCSR0B &= ~(1<<UDRIE0);
 	if(comm_send_message_end) {
 		comm_send_message_end->next = &send_message;
+	} else {
+		comm_send_message_begin = &send_message;
 	}
 	comm_send_message_end = &send_message;
-	CommTxEnable();
 	
 	UCSR0B |= (1<<UDRIE0);
 }
 
 ISR(USART_UDRE_vect)
 {
-	if(comm_send_isr.count) {
-		--comm_send_isr.count;
-		uint8_t b = *(comm_send_isr.pos++);
-		comm_send_isr.crc -= b;
-		UDR0 = b;
+	if(CommIsrSendBody()) {
+		return;
+	}
+	switch(comm_send_isr.state) {
+	case COMM_SEND_PREAMBLE:
+		CommIsrSendPreamble();
+		return;
+	case COMM_SEND_COMMAND_ID:
+		CommIsrSendCommandId();
+		return;
+	case COMM_SEND_CRC:
+		CommIsrSendCrc();
+		return;
+	}
+}
+
+PRIVATE INLINE bool CommIsrSendBody() {
+	if(!comm_send_isr.count) {
+		return false;
+	}
+	--comm_send_isr.count;
+	uint8_t b = *(comm_send_isr.pos++);
+	comm_send_isr.crc -= b;
+	UDR0 = b;
+	return true;
+}
+
+PRIVATE INLINE void CommIsrSendPreamble() {
+	if(!comm_send_message_begin) {
+		CommTxDisable();
+		UCSR0B &= ~(1<<UDRIE0);
 		return;
 	}
 	
-	switch(comm_send_isr.state) {
-	case COMM_SEND_PREAMBLE:
-		if(!comm_send_message_begin) {
-			CommTxDisable();
-			UCSR0B &= ~(1<<UDRIE0);
-			return;
-		}
+	if(++comm_send_isr.preamble_count >= comm_preamble_count) {
+		comm_send_isr.state = COMM_SEND_COMMAND_ID;
+	} else {
 		CommTxEnable();
-		UDR0 = comm_preamble_byte;
-		if(++comm_send_isr.preamble_count >= comm_preamble_count) {
-			comm_send_isr.pos   = &comm_send_message_begin->value[0];
-			comm_send_isr.count = comm_send_message_begin->size;
-			comm_send_isr.crc   = 0;
-			comm_send_isr.state = COMM_SEND_CRC;
-		}
-		return;
-	case COMM_SEND_CRC:
-		UDR0 = comm_send_isr.crc;
-		
-		comm_send_message_base_t* next = comm_send_message_begin->next;
-		comm_send_message_begin->next  = SEND_MESSAGE_NEXT_UNUSED;
-		comm_send_message_begin        = next;
-		comm_send_isr.state = COMM_SEND_PREAMBLE;
-		return;
 	}
+	
+	UDR0 = comm_preamble_byte;
+}
+
+PRIVATE INLINE bool CommIsrSendCommandId() {
+	uint8_t b = comm_send_message_begin->command_id;
+	comm_send_isr.crc = -b;
+	UDR0 = b;
+	
+	comm_send_isr.preamble_count = 0;
+	comm_send_isr.pos   = &comm_send_message_begin->value[0];
+	comm_send_isr.count = comm_send_message_begin->size;
+	comm_send_isr.state = COMM_SEND_CRC;
+	
+	return true;
+}
+
+PRIVATE INLINE void CommIsrSendCrc() {
+	UDR0 = comm_send_isr.crc;
+		
+	comm_send_message_base_t* next = comm_send_message_begin->next;
+	comm_send_message_begin->next  = SEND_MESSAGE_NEXT_UNUSED;
+	comm_send_message_begin        = next;
+	if(!next) {
+		comm_send_message_end = nullptr;
+	}
+	
+	comm_send_isr.state = COMM_SEND_PREAMBLE;
 }

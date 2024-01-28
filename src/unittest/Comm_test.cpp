@@ -6,6 +6,7 @@
 #include <queue>
 
 #include "../Macros.h"
+#include "../Pins.h"
 
 #include "../CommandLib.h"
 #include "../Comm.h"
@@ -15,6 +16,10 @@ using namespace ::testing;
 
 extern PRIVATE volatile comm_error_t comm_error;
 extern PRIVATE comm_recv_isr_t comm_recv_isr;
+extern PRIVATE comm_send_isr_t                     comm_send_isr;
+extern PRIVATE volatile bool                       comm_send_txen;	
+extern PRIVATE comm_send_message_base_t * volatile comm_send_message_begin;
+extern PRIVATE comm_send_message_base_t * volatile comm_send_message_end;
 
 static int      OnReceive_cmd_broadcast_called;
 static uint16_t	OnReceive_cmd_broadcast_value;
@@ -29,8 +34,15 @@ extern PRIVATE INLINE void CommIsrReceiveBlockNr(const uint8_t data_byte);
 extern PRIVATE INLINE void CommIsrReceiveBlockCount(const uint8_t data_byte);
 extern PRIVATE INLINE void CommIsrReceiveCrc(const uint8_t data_byte);
 extern PRIVATE INLINE uint8_t CommIsrGetMyBlockNr(command_type_t command_type);
+extern PRIVATE INLINE void CommTxEnable();
+extern PRIVATE INLINE void CommTxDisable();
+extern PRIVATE INLINE bool CommIsrSendBody();
+extern PRIVATE INLINE void CommIsrSendPreamble();
+extern PRIVATE INLINE void CommIsrSendCrc();
 
 extern ISR(USART_RX_vect);
+extern ISR(USART_TX_vect);
+extern ISR(USART_UDRE_vect);
 
 using test_command_type_strip_t = uint16_t;
 command_t<COMMAND_TYPE_STRIP, test_command_type_strip_t> test_command_type_strip;
@@ -115,45 +127,6 @@ TEST_F(CommTest, CommBegin) {
 	EXPECT_EQ(UCSR0C, (0<<UMSEL00) | (0<<UPM00) | (0<<USBS0)  | (3<<UCSZ00));
 	EXPECT_EQ(UCSR0B, (1<<RXEN0)   | (1<<TXEN0) | (1<<TXCIE0) | (1<<RXCIE0));
 }
-
-//~ TEST_F(CommTest, CommLoop_receivedNothing) {
-	//~ CommLoop();
-	
-	//~ EXPECT_EQ(OnReceive_cmd_broadcast_called, 0);
-	//~ EXPECT_EQ(OnReceive_cmd_strip_called, 0);
-//~ }
-
-//~ TEST_F(CommTest, CommLoop_receivingNotFinished) {
-	//~ cmd_broadcast.state = COMMAND_STATE_WRITE_LOCKED;
-	
-	//~ CommLoop();
-	
-	//~ EXPECT_EQ(cmd_broadcast.state, COMMAND_STATE_WRITE_LOCKED);
-	//~ EXPECT_EQ(OnReceive_cmd_broadcast_called, 0);
-//~ }
-
-//~ TEST_F(CommTest, CommLoop_receivedSingleBlockCommandType) {
-	//~ cmd_broadcast.state = COMMAND_STATE_READ_LOCKED;
-	//~ cmd_strip.processed_block_bits = 0x0001;
-	
-	//~ CommLoop();
-	
-	//~ EXPECT_EQ(cmd_broadcast.state, COMMAND_STATE_UNLOCKED);
-	//~ EXPECT_EQ(OnReceive_cmd_broadcast_called, 1);
-	//~ // TODO check parameters
-//~ }
-
-//~ TEST_F(CommTest, CommLoop_receivedMultiBlockCommandType_complete) {
-	//~ cmd_strip.state = COMMAND_STATE_READ_LOCKED;
-	//~ cmd_strip.processed_block_bits = 0x0001;
-	
-	//~ CommLoop();
-	
-	//~ EXPECT_EQ(cmd_strip.state, COMMAND_STATE_UNLOCKED);
-	//~ EXPECT_EQ(OnReceive_cmd_strip_called, 1);
-	//~ // TODO check parameters
-//~ }
-
 
 TEST_F(CommTest, CommIsrRaiseError_noErrorYet) {
 	comm_error = COMM_ERROR_NONE;
@@ -503,8 +476,11 @@ static void _testCommIsrReceiveCrc(
 	CommIsrReceiveCrc(0x42);
 	
 	EXPECT_EQ(command_info_test_command_type_strip.command.state, expected_command_state);
-	EXPECT_EQ(comm_error,     expected_comm_error);
+	EXPECT_EQ(comm_error,          expected_comm_error);
 	EXPECT_EQ(comm_recv_isr.state, expected_comm_state);
+	if (expected_comm_state == COMM_STATE_PREAMBLE) {
+		EXPECT_EQ(comm_recv_isr.preamble_count, 0);
+	}
 }
 
 TEST_F(CommTest, CommIsrReceiveCrc_missmatch_CommandStateWriteLocked) {
@@ -717,4 +693,80 @@ TEST_F(CommTest, ISR_USART_RX_vect_receiveBroadcast_isrAllowed_Command) {
 	ASSERT_TRUE(expected_OnReceive_cmd_broadcast_isr_allowed.empty());
 	
 	CommLoop();
+}
+
+static constexpr active_low_pin_t comm_tx_en_pin{PIN17};
+
+TEST_F(CommTest, CommTxEnable) {
+	comm_tx_en_pin.Reset();
+	comm_send_txen = false;
+	
+	CommTxEnable();
+	
+	EXPECT_TRUE(comm_tx_en_pin);
+	EXPECT_TRUE(comm_send_txen);
+	
+	isr_USART_TX_vect();
+	
+	EXPECT_TRUE(comm_tx_en_pin);
+	EXPECT_TRUE(comm_send_txen);
+}
+
+TEST_F(CommTest, CommTxDisable) {
+	comm_tx_en_pin.Set();
+	comm_send_txen = true;
+	
+	CommTxDisable();
+	
+	EXPECT_TRUE(comm_tx_en_pin);
+	EXPECT_FALSE(comm_send_txen);
+	
+	isr_USART_TX_vect();
+	
+	EXPECT_FALSE(comm_tx_en_pin);
+	EXPECT_FALSE(comm_send_txen);
+}
+
+TEST_F(CommTest, CommSendtest) {
+	comm_send_message_t<42, uint8_t[4]> send_message;
+	send_message.value[0] = 't';
+	send_message.value[1] = 'e';
+	send_message.value[2] = 's';
+	send_message.value[3] = 't';
+	
+	CommSend(send_message);
+	
+	isr_USART_UDRE_vect(); // preamble
+	
+	isr_USART_UDRE_vect(); // preamble
+	
+	isr_USART_TX_vect();
+	
+	isr_USART_UDRE_vect(); // command
+	
+	isr_USART_TX_vect();
+	
+	isr_USART_UDRE_vect(); // t
+	
+	isr_USART_TX_vect();
+	
+	isr_USART_UDRE_vect(); // e
+	
+	isr_USART_TX_vect();
+	
+	isr_USART_UDRE_vect(); // s
+	
+	isr_USART_TX_vect();
+	
+	isr_USART_UDRE_vect(); // t
+	
+	isr_USART_TX_vect();
+	
+	isr_USART_UDRE_vect(); // crc
+	
+	isr_USART_TX_vect();
+	
+	isr_USART_UDRE_vect(); // end
+	
+	isr_USART_TX_vect();
 }

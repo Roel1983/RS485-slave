@@ -29,6 +29,7 @@ typedef struct {
 
 typedef enum {
 	COMM_SEND_PREAMBLE,
+	COMM_SEND_COMMAND_ID,
 	COMM_SEND_CRC
 } comm_send_state_t;
 
