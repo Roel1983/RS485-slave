@@ -38,6 +38,7 @@ extern PRIVATE INLINE void CommTxEnable();
 extern PRIVATE INLINE void CommTxDisable();
 extern PRIVATE INLINE bool CommIsrSendBody();
 extern PRIVATE INLINE void CommIsrSendPreamble();
+extern PRIVATE INLINE void CommIsrSendCommandId();
 extern PRIVATE INLINE void CommIsrSendCrc();
 
 extern ISR(USART_RX_vect);
@@ -725,46 +726,285 @@ TEST_F(CommTest, CommTxDisable) {
 	EXPECT_FALSE(comm_send_txen);
 }
 
-TEST_F(CommTest, CommSendtest) {
-	comm_send_message_t<42, uint8_t[4]> send_message;
-	send_message.value[0] = 't';
-	send_message.value[1] = 'e';
-	send_message.value[2] = 's';
-	send_message.value[3] = 't';
+TEST_F(CommTest, CommSend_queuIsEmpty) {
+	
+	constexpr uint8_t command_id = 42;
+	comm_send_message_t<command_id, uint8_t[2]> send_message;
+	send_message.next       = SEND_MESSAGE_NEXT_UNUSED;
+	send_message.value[0]   = 'A';
+	send_message.value[0]   = 'B';
+	
+	comm_send_message_begin = nullptr;
+	comm_send_message_end   = nullptr;
 	
 	CommSend(send_message);
 	
-	isr_USART_UDRE_vect(); // preamble
+	EXPECT_EQ(send_message.size, 2);
+	EXPECT_EQ(send_message.command_id, 42);
+	EXPECT_EQ(comm_send_message_begin, &send_message);
+	EXPECT_EQ(comm_send_message_end,   &send_message);
+	EXPECT_EQ(send_message.next, nullptr);
+}
+
+TEST_F(CommTest, CommSend_queuNotEmpty) {
 	
-	isr_USART_UDRE_vect(); // preamble
+	constexpr uint8_t command_id3 = 42;
+	comm_send_message_t<command_id3, uint8_t[2]> send_message3;
+	send_message3.next       = nullptr;
+	send_message3.value[0]   = 'A';
+	send_message3.value[0]   = 'B';
 	
+	constexpr uint8_t command_id2 = 42;
+	comm_send_message_t<command_id2, uint8_t[2]> send_message2;
+	send_message2.next       = &send_message3;
+	send_message2.value[0]   = 'A';
+	send_message2.value[0]   = 'B';
+			
+	constexpr uint8_t command_id = 42;
+	comm_send_message_t<command_id, uint8_t[2]> send_message;
+	send_message.next       = SEND_MESSAGE_NEXT_UNUSED;
+	send_message.value[0]   = 'A';
+	send_message.value[0]   = 'B';
+	
+	comm_send_message_begin = &send_message2;
+	comm_send_message_end   = &send_message3;
+	
+	CommSend(send_message);
+	
+	EXPECT_EQ(send_message.size, 2);
+	EXPECT_EQ(send_message.command_id, 42);
+	
+	EXPECT_EQ(comm_send_message_begin, &send_message2);
+	EXPECT_EQ(send_message2.next,      &send_message3);
+	EXPECT_EQ(send_message3.next,      &send_message);
+	EXPECT_EQ(comm_send_message_end,   &send_message);
+}
+
+TEST_F(CommTest, CommIsrSendBody_noBody) {
+	UDR0                = 0xFF;
+	
+	comm_send_isr.count = 0;
+	uint8_t data[]      = "foo";
+	comm_send_isr.pos   = data;
+	
+	EXPECT_FALSE(CommIsrSendBody());
+	
+	EXPECT_EQ(comm_send_isr.count, 0);
+	EXPECT_EQ(comm_send_isr.pos,   data);
+	EXPECT_EQ(UDR0, 0xFF);
+}
+
+TEST_F(CommTest, CommIsrSendBody_hasBody) {
+	comm_send_isr.count = 2;
+	uint8_t data[]      = "AB";
+	comm_send_isr.pos   = data;
+	
+	UDR0 = 0xFF;
+	EXPECT_TRUE(CommIsrSendBody());
+	
+	EXPECT_EQ(comm_send_isr.count, 1);
+	EXPECT_EQ(comm_send_isr.pos,   data + 1);
+	EXPECT_EQ(UDR0, 'A');
+	
+	UDR0 = 0xFF;
+	EXPECT_TRUE(CommIsrSendBody());
+	
+	EXPECT_EQ(comm_send_isr.count, 0);
+	EXPECT_EQ(comm_send_isr.pos,   data + 2);
+	EXPECT_EQ(UDR0, 'B');
+}
+
+TEST_F(CommTest, CommIsrSendPreamble_noMessage) {
+	comm_send_message_begin      = nullptr;
+	comm_send_isr.preamble_count = 0;
+	comm_send_isr.state          = COMM_SEND_PREAMBLE;
+	comm_tx_en_pin.Reset();
+		
+	UDR0 = 0xFF;
+	CommIsrSendPreamble();
+	
+	EXPECT_EQ(comm_send_isr.preamble_count, 0);
+	EXPECT_EQ(comm_send_isr.state, COMM_SEND_PREAMBLE);
+	EXPECT_FALSE(comm_tx_en_pin);
+	EXPECT_EQ(UDR0, 0xFF);
+}
+
+TEST_F(CommTest, CommIsrSendPreamble_hasMessage) {
+	comm_send_message_t<42, uint8_t[2]> send_message;
+	comm_send_message_begin            = &send_message;
+	comm_send_message_begin->size     = 2;
+	comm_send_message_begin->value[0] = 'A';
+	comm_send_message_begin->value[0] = 'B';
+	comm_send_isr.preamble_count      = 0;
+	comm_send_isr.state               = COMM_SEND_PREAMBLE;
+	comm_tx_en_pin.Reset();
+		
+	UDR0 = 0xFF;
+	CommIsrSendPreamble();
+	
+	EXPECT_EQ(comm_send_isr.preamble_count, 1);
+	EXPECT_EQ(comm_send_isr.state, COMM_SEND_PREAMBLE);
+	EXPECT_TRUE(comm_tx_en_pin);
+	EXPECT_EQ(UDR0, comm_preamble_byte);
+	
+	UDR0 = 0xFF;
+	CommIsrSendPreamble();
+	
+	EXPECT_EQ(comm_send_isr.preamble_count, 2);
+	EXPECT_EQ(comm_send_isr.state, COMM_SEND_COMMAND_ID);
+	EXPECT_EQ(UDR0, comm_preamble_byte);
+}
+
+TEST_F(CommTest, CommIsrSendCommandId) {
+	comm_tx_en_pin.Set();
+	comm_send_txen = true;
+	
+	constexpr uint8_t command_id = 123;
+	comm_send_message_t<command_id, uint8_t[2]> send_message;
+	comm_send_message_begin             = &send_message;
+	comm_send_message_begin->size       = 2;
+	comm_send_message_begin->command_id = command_id;
+	comm_send_message_begin->value[0]   = 'A';
+	comm_send_message_begin->value[0]   = 'B';
+
+	comm_send_isr.pos    = nullptr;
+	comm_send_isr.count  = 0;
+	comm_send_isr.state  = COMM_SEND_COMMAND_ID;
+	comm_send_isr.crc    = 0xFF;
+	
+	UDR0 = 0xFF;
+	CommIsrSendCommandId();
+	
+	EXPECT_EQ(UDR0, command_id);
+	EXPECT_EQ(comm_send_isr.state, COMM_SEND_CRC);
+	EXPECT_EQ(comm_send_isr.pos,   &send_message.value[0]);
+	EXPECT_EQ(comm_send_isr.count, 2);
+	EXPECT_EQ(comm_send_isr.crc, 0x100 - command_id);		
+}
+
+TEST_F(CommTest, CommIsrSendCrc_noNextMessage) {
+	comm_tx_en_pin.Set();
+	comm_send_txen = true;
+	
+	constexpr uint8_t command_id = 123;
+	comm_send_message_t<command_id, uint8_t[2]> send_message;
+	comm_send_message_begin             = &send_message;
+	comm_send_message_begin->size       = 2;
+	comm_send_message_begin->next       = nullptr;
+	comm_send_message_begin->command_id = command_id;
+	comm_send_message_begin->value[0]   = 'A';
+	comm_send_message_begin->value[0]   = 'B';
+	
+	comm_send_isr.crc = 0x42;
+	
+	UDR0 = 0xFF;
+	CommIsrSendCrc();
+	
+	EXPECT_EQ(UDR0, 0x42);
+	EXPECT_EQ(comm_send_isr.preamble_count, 0);
+	EXPECT_EQ(comm_send_isr.state, COMM_SEND_PREAMBLE);
+	
+	EXPECT_EQ(send_message.next, SEND_MESSAGE_NEXT_UNUSED);
+	EXPECT_EQ(comm_send_message_begin, nullptr);	
+}
+
+TEST_F(CommTest, CommIsrSendCrc_hasNextMessage) {
+	comm_tx_en_pin.Set();
+	comm_send_txen = true;
+	
+	constexpr uint8_t command_id2 = 32;
+	comm_send_message_t<command_id2, uint8_t[2]> send_message2;
+	send_message2.size       = 2;
+	send_message2.next       = nullptr;
+	send_message2.command_id = command_id2;
+	send_message2.value[0]   = 'A';
+	send_message2.value[0]   = 'B';
+	
+	constexpr uint8_t command_id = 123;
+	comm_send_message_t<command_id, uint8_t[2]> send_message;
+	comm_send_message_begin             = &send_message;
+	comm_send_message_begin->size       = 2;
+	comm_send_message_begin->next       = &send_message2;
+	comm_send_message_begin->command_id = command_id;
+	comm_send_message_begin->value[0]   = 'A';
+	comm_send_message_begin->value[0]   = 'B';
+	
+	comm_send_isr.crc = 0x42;
+	
+	UDR0 = 0xFF;
+	CommIsrSendCrc();
+	
+	EXPECT_EQ(UDR0, 0x42);
+	EXPECT_EQ(comm_send_isr.preamble_count, 0);
+	EXPECT_EQ(comm_send_isr.state, COMM_SEND_PREAMBLE);
+	
+	EXPECT_EQ(send_message.next, SEND_MESSAGE_NEXT_UNUSED);
+	EXPECT_EQ(comm_send_message_begin, &send_message2);	
+}
+
+TEST_F(CommTest, CommSendtest) {
+	comm_tx_en_pin.Reset();
+	comm_send_txen = false;
+	
+	comm_send_message_t<42, uint8_t[2]> send_message;
+	send_message.value[0] = 'A';
+	send_message.value[1] = 'B';
+	
+	CommSend(send_message);
+	EXPECT_TRUE(UCSR0B & _BV(UDRIE0));
+	
+	// Read to write: Preamble 1
+	isr_USART_UDRE_vect();
+	EXPECT_TRUE(comm_tx_en_pin);
+	EXPECT_EQ  (UDR0, comm_preamble_byte);
+	
+	// Read to write: Preamble 2
+	isr_USART_UDRE_vect();
+	EXPECT_EQ  (UDR0, comm_preamble_byte);
+	
+	// Complete sending: Preamble 1
 	isr_USART_TX_vect();
+	EXPECT_TRUE(comm_tx_en_pin);
 	
-	isr_USART_UDRE_vect(); // command
+	// Read to write: Command id
+	isr_USART_UDRE_vect();
+	EXPECT_EQ  (UDR0, 42);
 	
+	// Complete sending: Preamble 2
 	isr_USART_TX_vect();
+	EXPECT_TRUE(comm_tx_en_pin);
 	
-	isr_USART_UDRE_vect(); // t
+	// Read to write: Body[0]
+	isr_USART_UDRE_vect();
+	EXPECT_EQ  (UDR0, 'A');
 	
+	// Complete sending: Command id
 	isr_USART_TX_vect();
+	EXPECT_TRUE(comm_tx_en_pin);
 	
-	isr_USART_UDRE_vect(); // e
+	// Read to write: Body[1]
+	isr_USART_UDRE_vect();
+	EXPECT_EQ  (UDR0, 'B');
 	
+	// Complete sending: Body[0]
 	isr_USART_TX_vect();
+	EXPECT_TRUE(comm_tx_en_pin);
 	
-	isr_USART_UDRE_vect(); // s
+	// Read to write: Crc
+	isr_USART_UDRE_vect();
+	EXPECT_EQ  (UDR0, 0x100 - 42 - (uint8_t)'A' - (uint8_t)'B');
 	
+	// Complete sending: Body[1]
 	isr_USART_TX_vect();
+	EXPECT_TRUE(comm_tx_en_pin);
 	
-	isr_USART_UDRE_vect(); // t
+	// Read to write: Nothing left to write
+	UDR0 = 0xFF;
+	isr_USART_UDRE_vect();
+	EXPECT_EQ(UDR0, 0xFF);
 	
+	// Complete sending: Crc
 	isr_USART_TX_vect();
-	
-	isr_USART_UDRE_vect(); // crc
-	
-	isr_USART_TX_vect();
-	
-	isr_USART_UDRE_vect(); // end
-	
-	isr_USART_TX_vect();
+	EXPECT_FALSE(comm_tx_en_pin);
+	EXPECT_FALSE(UCSR0B & _BV(UDRIE0));
 }

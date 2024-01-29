@@ -435,7 +435,6 @@ PRIVATE INLINE bool CommIsrSendCommandId() {
 	comm_send_isr.crc = -b;
 	UDR0 = b;
 	
-	comm_send_isr.preamble_count = 0;
 	comm_send_isr.pos   = &comm_send_message_begin->value[0];
 	comm_send_isr.count = comm_send_message_begin->size;
 	comm_send_isr.state = COMM_SEND_CRC;
@@ -453,5 +452,6 @@ PRIVATE INLINE void CommIsrSendCrc() {
 		comm_send_message_end = nullptr;
 	}
 	
-	comm_send_isr.state = COMM_SEND_PREAMBLE;
+	comm_send_isr.preamble_count = 0;
+	comm_send_isr.state          = COMM_SEND_PREAMBLE;
 }
