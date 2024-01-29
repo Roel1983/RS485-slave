@@ -116,11 +116,11 @@ TEST_F(CommTest, CommBegin) {
 #if F_CPU == 16000000
 	EXPECT_EQ(UBRR0H, 0x00);
 	EXPECT_EQ(UBRR0L, 0x10);
-#elif F_CPU == 14745000
+#elif F_CPU == 14745600
 	EXPECT_EQ(UBRR0H, 0x00);
 	EXPECT_EQ(UBRR0L, 0x0F);
 #else
-	FAIL("");
+	FAIL() << "No expected value for F_CPU = " << F_CPU;
 #endif
 	
 	EXPECT_TRUE(UCSR0A & (1<<U2X0));
@@ -225,7 +225,7 @@ TEST_F(CommTest, CommIsrReceivePreamble_noPreamble) {
 	comm_error     = COMM_ERROR_NONE;
 	comm_recv_isr.state = COMM_STATE_PREAMBLE;
 	
-	CommIsrReceivePreamble(0xAA);
+	CommIsrReceivePreamble(~comm_preamble_byte);
 	
 	EXPECT_EQ(comm_error,     COMM_ERROR_DATA);
 	EXPECT_EQ(comm_recv_isr.state, COMM_STATE_PREAMBLE);
@@ -235,8 +235,8 @@ TEST_F(CommTest, CommIsrReceivePreamble_halfPreamble) {
 	comm_error     = COMM_ERROR_NONE;
 	comm_recv_isr.state = COMM_STATE_PREAMBLE;
 	
-	CommIsrReceivePreamble(0x55);
-	CommIsrReceivePreamble(0xAA);
+	CommIsrReceivePreamble(comm_preamble_byte);
+	CommIsrReceivePreamble(~comm_preamble_byte);
 	
 	EXPECT_EQ(comm_error,     COMM_ERROR_DATA);
 	EXPECT_EQ(comm_recv_isr.state, COMM_STATE_PREAMBLE);
@@ -246,8 +246,8 @@ TEST_F(CommTest, CommIsrReceivePreamble_completePreamble) {
 	comm_error     = COMM_ERROR_NONE;
 	comm_recv_isr.state = COMM_STATE_PREAMBLE;
 	
-	CommIsrReceivePreamble(0x55);
-	CommIsrReceivePreamble(0x55);
+	CommIsrReceivePreamble(comm_preamble_byte);
+	CommIsrReceivePreamble(comm_preamble_byte);
 	
 	EXPECT_EQ(comm_error,     COMM_ERROR_NONE);
 	EXPECT_EQ(comm_recv_isr.state, COMM_STATE_COMMAND_ID);
@@ -694,8 +694,6 @@ TEST_F(CommTest, ISR_USART_RX_vect_receiveBroadcast_isrAllowed_Command) {
 	
 	CommLoop();
 }
-
-static constexpr active_low_pin_t comm_tx_en_pin{PIN17};
 
 TEST_F(CommTest, CommTxEnable) {
 	comm_tx_en_pin.Reset();

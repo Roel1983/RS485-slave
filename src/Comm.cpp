@@ -12,11 +12,6 @@
 #include "Comm.h"
 #include "Comm_private.h"
 
-static constexpr uint32_t comm_baudrate       = 115200;
-static constexpr uint8_t  comm_preamble_byte  = 0x55;
-static constexpr uint8_t  comm_preamble_count = 2;
-static constexpr active_low_pin_t comm_tx_en_pin{PIN17};
-
 PRIVATE volatile comm_error_t               comm_error = COMM_ERROR_NONE;
 PRIVATE comm_recv_isr_t                     comm_recv_isr = {0};
 PRIVATE comm_send_isr_t                     comm_send_isr;

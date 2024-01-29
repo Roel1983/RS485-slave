@@ -41,4 +41,9 @@ typedef struct {
 	uint8_t  crc;
 } comm_send_isr_t;
 
+static constexpr uint32_t comm_baudrate       = 115200;
+static constexpr uint8_t  comm_preamble_byte  = 0x55;
+static constexpr uint8_t  comm_preamble_count = 2;
+static constexpr active_high_pin_t comm_tx_en_pin{PIN17};
+
 #endif

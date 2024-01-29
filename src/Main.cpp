@@ -1,6 +1,7 @@
 #include <avr/interrupt.h>
 #include <util/delay.h>
 
+#include <stdio.h>
 #include <string.h>
 
 #include "Comm.h"
@@ -25,10 +26,11 @@ void Setup() {
 	sei();
 }
 
-comm_send_message_t<42, uint8_t[12]> send_message_broadcast_response;
+comm_send_message_t<42, uint8_t[30]> send_message_broadcast_response;
 comm_send_message_t<66, uint8_t[4]>  send_message_comm_error_message;
 
 void Loop() {
+	_delay_ms(10);
 	CommLoop();
 	
 	comm_error_t comm_error = CommGetError();
@@ -60,22 +62,43 @@ void Loop() {
 
 bool OnReceive_cmd_broadcast(const uint16_t& value) {
 	if(CommCanUseSendMessage(send_message_broadcast_response)) {
-		memcpy((void*)&send_message_broadcast_response.value, "hello moon\n", 12);
+		memset((char*)send_message_broadcast_response.value, '.', 30);
+		snprintf((char*)send_message_broadcast_response.value, 30, "cmd_broadcast(%d)", (int)value);
 		CommSend(send_message_broadcast_response);
+		return true;
 	}
-	return true;
+	return false;
 }
 
 bool OnReceive_cmd_device(const uint16_t& value) {
-	return true;
+	if(CommCanUseSendMessage(send_message_broadcast_response)) {
+		memset((char*)send_message_broadcast_response.value, '.', 30);
+		snprintf((char*)send_message_broadcast_response.value, 30, "cmd_device(%d)", (int)value);
+		CommSend(send_message_broadcast_response);
+		return true;
+	}
+	return false;
 }
 
 bool OnReceive_cmd_strip(uint8_t relative_block_nr, const uint16_t& value) {
-	return true;
+	if(CommCanUseSendMessage(send_message_broadcast_response)) {
+		memset((char*)send_message_broadcast_response.value, '.', 30);
+		snprintf((char*)send_message_broadcast_response.value, 30, "cmd_strip(%d, %d)", (int)relative_block_nr, (int)value);
+		CommSend(send_message_broadcast_response);
+		return true;
+	}
+	return false;
 }
 
 bool OnReceive_cmd_broadcast_isr_allowed(const uint16_t& value) {
-	return true;
+	PORTB |= _BV(PB1);PORTB &= ~_BV(PB1);
+	if(CommCanUseSendMessage(send_message_broadcast_response)) {
+		memset((char*)send_message_broadcast_response.value, '.', 30);
+		snprintf((char*)send_message_broadcast_response.value, 30, "cmd_broadcast_isr(%d)", (int)value);
+		CommSend(send_message_broadcast_response);
+		return true;
+	}
+	return false;
 }
 
 #endif
