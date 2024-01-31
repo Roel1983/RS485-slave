@@ -34,20 +34,25 @@ void CommReset();
 void CommBegin();
 void CommLoop();
 
+comm_error_t CommGetError();
+void         CommSetDeviceNr(uint8_t device_nr);
+void         CommSetStripNr (uint8_t strip_nr);
+
+inline bool CommCanUseSendMessage(comm_send_message_base_t& message);
+template<uint8_t command_id, typename T> void CommSend(comm_send_message_t<command_id, T>& send_message);
+
+void CommSetDeviceNr(uint8_t device_nr);
+void CommSetStripNr(uint8_t strip_nr);
+
 inline bool CommCanUseSendMessage(comm_send_message_base_t& message) {
 	return message.next == SEND_MESSAGE_NEXT_UNUSED;
 }
 
-void CommSend(uint8_t command_id, comm_send_message_base_t& send_message, uint8_t size);
+void        CommSend(uint8_t command_id, comm_send_message_base_t& send_message, uint8_t size);
 
 template<uint8_t command_id, typename T>
 void CommSend(comm_send_message_t<command_id, T>& send_message) {
 	CommSend(command_id, send_message, sizeof(T));
 }
-
-void CommSetDeviceNr(uint8_t device_nr);
-void CommSetStripNr(uint8_t strip_nr);
-
-comm_error_t CommGetError();
 
 #endif

@@ -20,6 +20,7 @@ extern PRIVATE comm_send_isr_t                     comm_send_isr;
 extern PRIVATE volatile bool                       comm_send_txen;	
 extern PRIVATE comm_send_message_base_t * volatile comm_send_message_begin;
 extern PRIVATE comm_send_message_base_t * volatile comm_send_message_end;
+extern PRIVATE volatile comm_send_strategy_t       comm_send_at_will;
 
 static int      OnReceive_cmd_broadcast_called;
 static uint16_t	OnReceive_cmd_broadcast_value;
@@ -942,7 +943,9 @@ TEST_F(CommTest, CommIsrSendCrc_hasNextMessage) {
 	EXPECT_EQ(comm_send_message_begin, &send_message2);	
 }
 
-TEST_F(CommTest, CommSendtest) {
+TEST_F(CommTest, CommSendtest_sendAtWill) {
+	comm_send_at_will = COMM_SEND_STRATEGY_SEND_AT_WILL;
+	
 	comm_tx_en_pin.Reset();
 	comm_send_txen = false;
 	

@@ -18,6 +18,8 @@ PRIVATE comm_send_isr_t                     comm_send_isr;
 PRIVATE volatile bool                       comm_send_txen          = false;	
 PRIVATE comm_send_message_base_t * volatile comm_send_message_begin = nullptr;
 PRIVATE comm_send_message_base_t * volatile comm_send_message_end   = nullptr;
+PRIVATE volatile comm_send_strategy_t       comm_send_at_will       = 
+		COMM_SEND_STRATEGY_SEND_ON_DEMAND;
 
 static volatile union {
 	struct __attribute__((packed)) {
@@ -59,6 +61,7 @@ void CommReset() {
 	comm_send_txen          = false;	
 	comm_send_message_begin = nullptr;
 	comm_send_message_end   = nullptr;
+	comm_send_at_will       = COMM_SEND_STRATEGY_SEND_ON_DEMAND;
 }
 #endif
 
@@ -382,7 +385,9 @@ void CommSend(
 	}
 	comm_send_message_end = &send_message;
 	
-	UCSR0B |= (1<<UDRIE0);
+	if (comm_send_at_will) {
+		UCSR0B |= (1<<UDRIE0);
+	}
 }
 
 ISR(USART_UDRE_vect)
@@ -454,4 +459,22 @@ PRIVATE INLINE void CommIsrSendCrc() {
 	
 	comm_send_isr.preamble_count = 0;
 	comm_send_isr.state          = COMM_SEND_PREAMBLE;
+}
+
+comm_send_message_t<1, uint8_t> send_message_request_data_nop_response;
+
+bool OnReceive_cmd_request_data(const uint8_t& id) {
+	uint8_t my_id = comm_my_block_nrs.device_nr;
+	if(id == my_id) {
+		if (comm_send_message_begin == nullptr) {
+			send_message_request_data_nop_response.value = my_id;
+			CommSend(send_message_request_data_nop_response);
+		}
+		UCSR0B |= (1<<UDRIE0);
+	}
+	return true;
+}
+
+bool OnReceive_cmd_request_data_nop_response(const uint8_t& id) {
+	return true;
 }
