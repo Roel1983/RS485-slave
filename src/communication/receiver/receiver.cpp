@@ -8,6 +8,7 @@
 
 #include "../../macros.hpp"
 #include "../commands.hpp"
+#include "../communication.hpp"
 #include "command.hpp"
 #include "receiver_errors.hpp"
 
@@ -24,8 +25,8 @@ typedef enum {
 } State;
 
 struct Isr {
-	uint8_t           crc;
 	State             state;
+	uint8_t           crc;
 	uint8_t           read_byte_count;
 	union {
 		uint8_t      *read_byte_pos;
@@ -40,11 +41,6 @@ struct Isr {
 	uint8_t           sender_unique_id;
 	const CommandInfo* command_info;
 };
-
-PRIVATE constexpr uint32_t BAUDRATE       = 115200;
-PRIVATE constexpr uint8_t  PREAMBLE_BYTE  = 0x55;
-PRIVATE constexpr uint8_t  PREAMBLE_COUNT = 2;
-PRIVATE constexpr uint8_t  EXTENDED_PAYLOAD_LENGHT_MASK = 0x80;
 
 Isr    isr;
 
@@ -68,29 +64,14 @@ PRIVATE INLINE void notifyMultiBlockCommandReceived(const CommandInfo& command_i
 PRIVATE void receiveSkipRemainingPayload();
 
 #ifdef UNITTEST
-void ReceiverReset() {
+void teardown() {
 	memset(&isr, 0, sizeof(isr));
 	ReceiverErrorsReset();
 }
 #endif
 
-void ReceiverSetup() {
-	constexpr uint16_t baudrate_prescaler = (F_CPU / (8UL * BAUDRATE)) - 1;
+void setup() {
 	
-	UBRR0H  = baudrate_prescaler >> 8;
-	UBRR0L  = baudrate_prescaler;
-	
-	UCSR0A |= (1<<U2X0);
-	
-	UCSR0C = (0<<UMSEL00)
-	       | (0<<UPM00)
-	       | (0<<USBS0)
-	       | (3<<UCSZ00);
-	
-	UCSR0B = (1<<RXEN0)
-	       | (1<<TXEN0)
-	       | (1<<TXCIE0)
-	       | (1<<RXCIE0);
 }
 
 ISR(USART_RX_vect) {
@@ -153,13 +134,13 @@ PRIVATE INLINE bool receiveBlockData(const uint8_t data_byte) {
 }
 
 PRIVATE INLINE void receivePreamble(const uint8_t data_byte) {
-	if (data_byte != PREAMBLE_BYTE) {
+	if (data_byte != ::communitation::PREAMBLE_BYTE) {
 		raiseError(ERROR_PREAMBLE);
 		isr.preamble_count = 0;
 		isr.state          = STATE_PREAMBLE;
 		return;
 	}
-	if (++isr.preamble_count >= PREAMBLE_COUNT) {
+	if (++isr.preamble_count >= ::communitation::PREAMBLE_COUNT) {
 		isr.crc = 0;
 		isr.state = STATE_SENDER_UNIQUE_ID;
 	}

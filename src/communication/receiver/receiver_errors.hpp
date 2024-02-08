@@ -1,5 +1,5 @@
-#ifndef COMMUNICATION_RECEIVERERRORS_H_
-#define COMMUNICATION_RECEIVERERRORS_H_
+#ifndef COMMUNICATION_RECEIVER_RECEIVERERRORS_H_
+#define COMMUNICATION_RECEIVER_RECEIVERERRORS_H_
 
 #include "stdint.h"
 
@@ -24,4 +24,4 @@ void ReceiverErrorsReset();
 void raiseError(const Error error);
 
 }}
-#endif
+#endif // COMMUNICATION_RECEIVER_RECEIVERERRORS_H_
