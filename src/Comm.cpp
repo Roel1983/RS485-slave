@@ -1,7 +1,10 @@
 #include <string.h> 
 
+
 #include <avr/io.h>
+#ifndef UNITTEST
 #include <avr/interrupt.h>
+#endif
 
 #include "Comm.h"
 
@@ -150,8 +153,8 @@ void CommReceiveUnittestReset() {
 }
 #endif
 
+
 void CommBegin() {
-	
 	// Set Baud Rate (14764000Hz)
 #if 0
 	UBRR0H = 0x00; ////BAUD_PRESCALER >> 8;
