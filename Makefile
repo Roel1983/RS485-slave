@@ -1,7 +1,7 @@
 all:
 
 # Public settings
-PROJECT_NAME              ?= RGBW-bar
+PROJECT_NAME              ?= RGBW-RS485-slave
 UPLOAD_PORT               ?= /dev/ttyUSB0
 
 # Directories
