@@ -3,6 +3,7 @@ all:
 # Public settings
 PROJECT_NAME              ?= RGBW-RS485-slave
 UPLOAD_PORT               ?= /dev/ttyUSB0
+F_CPU                     ?= 16000000
 
 # Directories
 SOURCE_DIR                := src
@@ -22,9 +23,17 @@ ExecutableFileName         = $(call FileName,$1,$(EXECUTABLE_FILE_PATTERN))
 wildcard_recursive_1       = $(wildcard $1$2) $(foreach dir,$(wildcard $1*/),$(call wildcard_recursive_1,$(dir),$2))
 wildcard_recursive         = $(foreach base_dir,$1,$(call wildcard_recursive_1,$(base_dir),$2))
 
+# Include sub directories
+FIRMWARE_SOURCE_FILES_CPP  = 
+FIRMWARE_SOURCE_FILES_C    = 
+
+UNITTEST_SOURCE_FILES_CPP  = $(FIRMWARE_SOURCE_FILES_CPP)
+UNITTEST_SOURCE_FILES_C    = $(FIRMWARE_SOURCE_FILES_C)
+
+include src/build.mk
+include test/build.mk
+
 # Determine Firmware files
-FIRMWARE_SOURCE_FILES_CPP := $(wildcard src/*.cpp) # Make recursive
-FIRMWARE_SOURCE_FILES_C   := $(wildcard src/*.c)   # Make recursive
 FIRMWARE_SOURCE_FILES     := $(FIRMWARE_SOURCE_FILES_CPP) $(FIRMWARE_SOURCE_FILES_C)
 
 FIRMWARE_BUILD_DIR         = $(BUILD_DIR)/firmware
@@ -34,19 +43,14 @@ FIRMWARE_ELF_FILE          = $(BUILD_DIR)/$(PROJECT_NAME).elf
 FIRMWARE_HEX_FILE          = $(BIN_DIR)/$(PROJECT_NAME).hex
 
 # Determine Unittest files
-UNITTEST_SOURCE_DIRS       = $(call wildcard_recursive,$(SOURCE_DIR)/,unittest/)
 
-UNITTEST_SOURCE_FILES_CPP  = $(FIRMWARE_SOURCE_FILES_CPP)
-UNITTEST_SOURCE_FILES_CPP += $(call wildcard_recursive,$(UNITTEST_SOURCE_DIRS),*.cpp)
-UNITTEST_SOURCE_FILES_C   += $(call wildcard_recursive,$(UNITTEST_SOURCE_DIRS),*.c)
 UNITTEST_SOURCE_FILES      = $(UNITTEST_SOURCE_FILES_CPP) $(UNITTEST_SOURCE_FILES_C)
 
 UNITTEST_BUILD_DIR         = $(BUILD_DIR)/unittest
 UNITTEST_OBJECT_FILES      = $(call ObjectFileName, $(addprefix $(UNITTEST_BUILD_DIR)/, $(UNITTEST_SOURCE_FILES)))
 
 UNITTEST_EXECUTABLE_FILE   = $(call ExecutableFileName, $(BIN_DIR)/$(PROJECT_NAME)_unittest)
-bla:
-	echo $(UNITTEST_SOURCE_DIRS)
+
 # Dependency generation
 DEPFLAGS = -MT $@ -MMD -MP -MF $(basename $@).d
 
@@ -91,7 +95,7 @@ endif
 UNITTEST_GCDA_FILES = $(UNITTEST_OBJECT_FILES:%.o=%.gcda)
 UNITTEST_GCNO_FILES = $(UNITTEST_OBJECT_FILES:%.o=%.gcno)
 
-exclude_from_code_coverage = $(filter %_test,$1)$(filter src/unittest/fakeavr/%,$1)
+exclude_from_code_coverage = $(filter %_test,$1)$(filter test/fakeavr/%,$1)
 
 # Public targets
 .PHONY: all
@@ -126,7 +130,7 @@ $(CODE_COVERAGE_DIR)/codecoverage.html: $(UNITTEST_EXECUTABLE_FILE)
 	
 	@$(if $(wildcard %.gcov),-rm *.gcov)
 	@$(call mkdir, $(CODE_COVERAGE_DIR))
-	$(foreach dir, $(filter-out build/unittest/src/unittest/fakeavr%,$(sort $(dir $(UNITTEST_OBJECT_FILES)))),\
+	$(foreach dir, $(filter-out build/unittest/test/fakeavr%,$(sort $(dir $(UNITTEST_OBJECT_FILES)))),\
 		gcov \
 		$(if $(filter-out %/unittest/,$(dir)),-b) \
 		-l -p -o $(dir) $(dir)*.gcno > /dev/null;)
@@ -158,21 +162,19 @@ $(FIRMWARE_ELF_FILE): $(FIRMWARE_OBJECT_FILES) | avr-gcc
 $(FIRMWARE_BUILD_DIR)/%.o: %.cpp
 $(FIRMWARE_BUILD_DIR)/%.o: %.cpp $(FIRMWARE_BUILD_DIR)/%.d | avr-gcc Makefile
 	@$(call mkdir, $(dir $@))
-	avr-gcc -std=c++17 -c -Wall -Os $(DEPFLAGS) -mmcu=atmega328 $< -o $@
+	avr-gcc -std=c++17 -fshort-enums -c -DF_CPU=$(F_CPU) -Wall -Os $(DEPFLAGS) -mmcu=atmega328 $< -o $@
 
 # Unittest
 $(UNITTEST_EXECUTABLE_FILE): $(UNITTEST_OBJECT_FILES)
 	@$(call mkdir, $(dir $@))
-	g++ $(CODE_COVERAGE_FLAGS) -o $@ $^ /usr/src/gtest/lib/libgtest.a
+	g++ -std=c++17 $(CODE_COVERAGE_FLAGS) -o $@ $^ /usr/src/gtest/lib/libgtest.a
 
 $(UNITTEST_BUILD_DIR)/%.o: %.cpp
 $(UNITTEST_BUILD_DIR)/%.o: %.cpp $(UNITTEST_BUILD_DIR)/%.d Makefile
 	@$(call mkdir, $(dir $@))
-	g++ -g3 -c $(DEPFLAGS) $(CODE_COVERAGE_FLAGS) -DUNITTEST -Isrc/unittest/fakeavr -o $@ $< 
+	g++ -std=c++17 -g3 -c -DF_CPU=$(F_CPU) $(DEPFLAGS) $(CODE_COVERAGE_FLAGS) -DUNITTEST -Itest/fakeavr -o $@ $< 
 
 #dependency generation
-
-
 DEPFILES := $(UNITTEST_OBJECT_FILES:%.o=%.d)
 DEPFILES += $(FIRMWARE_OBJECT_FILES:%.o=%.d)
 $(DEPFILES):
