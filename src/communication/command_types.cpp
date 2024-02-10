@@ -5,14 +5,19 @@
 
 #include "command_types.hpp"
 
+namespace communication {
+	
 PRIVATE uint8_t block_nr[COMMAND_TYPE_COUNT] = {0};
 
-uint8_t CommandTypeGetBlockNr(const CommandType type) {
-	assert(type >= 0 && type < COMMAND_TYPE_COUNT);
+uint8_t commandTypeGetBlockNr(const CommandType type) {
+	assert(type > 0 && type <= COMMAND_TYPE_COUNT);
 	
-	return block_nr[type];
+	return block_nr[type - 1];
 }
 
-void CommandTypeSetBlockNr(const CommandType type, const uint8_t nr) {
-	block_nr[type] = nr;
+void commandTypeSetBlockNr(const CommandType type, const uint8_t nr) {
+	assert(type > 0 && type <= COMMAND_TYPE_COUNT);
+	block_nr[type - 1] = nr;
 }
+
+} // namespace communication

@@ -12,7 +12,9 @@
 #include "command.hpp"
 #include "receiver_errors.hpp"
 
-namespace communitation {
+using namespace communication;
+
+namespace communication {
 namespace receiver {
 
 typedef enum {
@@ -134,13 +136,13 @@ PRIVATE INLINE bool receiveBlockData(const uint8_t data_byte) {
 }
 
 PRIVATE INLINE void receivePreamble(const uint8_t data_byte) {
-	if (data_byte != ::communitation::PREAMBLE_BYTE) {
+	if (data_byte != PREAMBLE_BYTE) {
 		raiseError(ERROR_PREAMBLE);
 		isr.preamble_count = 0;
 		isr.state          = STATE_PREAMBLE;
 		return;
 	}
-	if (++isr.preamble_count >= ::communitation::PREAMBLE_COUNT) {
+	if (++isr.preamble_count >= PREAMBLE_COUNT) {
 		isr.crc = 0;
 		isr.state = STATE_SENDER_UNIQUE_ID;
 	}
@@ -164,7 +166,7 @@ PRIVATE INLINE void receivePayloadLength(const uint8_t data_byte) {
 PRIVATE INLINE void receiveCommandId(const uint8_t data_byte) {
 	const uint8_t command_id = data_byte;
 	
-	isr.command_info = CommandGetInfoGet(command_id);
+	isr.command_info = commandGetInfoGet(command_id);
 	if (!isr.command_info) {
 		receiveCommandIdUnknownCommand();
 		return;
@@ -247,8 +249,8 @@ PRIVATE INLINE void calculateReceiveBlockData(CommandBase& command, const uint8_
 	const CommandInfo& command_info(*isr.command_info);
 	const CommandType command_type = command_info.type;
 	
-	const uint8_t my_block_nr    = CommandTypeGetBlockNr   (command_type);
-	const uint8_t my_block_count = CommandTypeGetBlockCount(command_type);
+	const uint8_t my_block_nr    = commandTypeGetBlockNr   (command_type);
+	const uint8_t my_block_count = commandTypeGetBlockCount(command_type);
 	const uint8_t block_size     = command_info.block_size;
 	
 	uint8_t skip_block_count_before_read;
@@ -322,7 +324,7 @@ PRIVATE INLINE void receiveCrc(const uint8_t data_byte) {
 }
 
 PRIVATE INLINE void notifyCommandReceived(const CommandInfo& command_info) {
-	if (CommandTypeGetBlockCount(command_info.type) == 1) {
+	if (commandTypeGetBlockCount(command_info.type) == 1) {
 		notifySingleBlockCommandReceived(command_info);
 	} else {
 		notifyMultiBlockCommandReceived(command_info);
@@ -366,4 +368,4 @@ PRIVATE void receiveSkipRemainingPayload() {
 	isr.state                      = STATE_CRC;
 }
 
-}} // End of namespace ::communitation::receiver
+}} // End of namespace ::communication::receiver

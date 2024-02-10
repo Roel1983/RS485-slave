@@ -3,6 +3,11 @@
 
 #include "../command_types.hpp"
 
+using namespace communication;
+
+namespace communication {
+namespace receiver {
+
 enum CommandLock {
 	COMMAND_LOCK_NONE,
 	COMMAND_LOCK_WRITE,
@@ -22,7 +27,7 @@ template <
 	using Type = T;
 	static constexpr CommandType command_type = _command_type;
 	static constexpr uint8_t     block_size   = sizeof(T);
-	T buffer[CommandTypeGetBlockCount(_command_type)];
+	T buffer[commandTypeGetBlockCount(_command_type)];
 };
 
 template <
@@ -32,5 +37,7 @@ template <
 	static constexpr CommandType command_type = _command_type;
 	static constexpr uint8_t     block_size   = 0;
 };
+
+}} // End of: communication::receiver
 
 #endif  // COMMUNICATION_COMMAND_H_

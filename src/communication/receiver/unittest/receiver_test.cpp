@@ -5,17 +5,17 @@
 #include "../receiver.hpp"
 
 using namespace ::testing;
-using namespace ::communitation::receiver;
+using namespace ::communication;
 
 class CommunitionReceiverReceiver : public Test {
 protected:
 	void TearDown() override {
-		ReceiverReset();
+		receiver::teardown();
 	}
 };
 
 TEST_F(CommunitionReceiverReceiver, begin) {
-	ReceiverSetup();
+	receiver::setup();
 	
 #if F_CPU == 16000000
 	EXPECT_EQ(UBRR0H, 0x00);

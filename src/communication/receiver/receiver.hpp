@@ -1,7 +1,7 @@
 #ifndef COMMUNICATION_RECEIVER_RECEIVER_H_
 #define COMMUNICATION_RECEIVER_RECEIVER_H_
 
-namespace communitation {
+namespace communication {
 namespace receiver {
 
 #ifdef UNITTEST

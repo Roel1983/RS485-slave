@@ -1,7 +1,9 @@
 #ifndef COMMUNICATION_COMMUNICATION_H_
 #define COMMUNICATION_COMMUNICATION_H_
 
-namespace communitation {
+#include "stdint.h"
+
+namespace communication {
 	
 constexpr uint32_t BAUDRATE       = 115200;
 constexpr uint8_t  PREAMBLE_BYTE  = 0x55;

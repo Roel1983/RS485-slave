@@ -1,3 +1,11 @@
+#include <avr/interrupt.h>
+#include <util/delay.h>
+
+#include <string.h>
+
+#include "communication/communication.hpp"
+#include "communication/sender/sender.hpp"
+
 void Setup();
 void Loop();
 
@@ -12,7 +20,33 @@ int main (void)
 #endif
 
 void Setup() {
+	communication::setup();
+	sei();
 }
 
+volatile bool b = false;
+
 void Loop() {
+	
+	b = true;
+	char buffer[] = "hello world"; 
+	communication::sender::Command command;
+	command.id             = 0x66;
+	command.payload_length = strlen(buffer);
+	command.payload_buffer = (uint8_t*)buffer;
+	communication::sender::send(command);
+	
+	_delay_ms(1000);
+}
+
+void communication::sender::onSendComplete() {
+	if (b) {
+		b = false;
+		char buffer[] = "moon"; 
+		communication::sender::Command command;
+		command.id             = 0x10;
+		command.payload_length = strlen(buffer);
+		command.payload_buffer = (uint8_t*)buffer;
+		communication::sender::send(command);
+	}
 }

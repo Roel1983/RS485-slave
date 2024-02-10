@@ -3,7 +3,7 @@ all:
 # Public settings
 PROJECT_NAME              ?= RGBW-RS485-slave
 UPLOAD_PORT               ?= /dev/ttyUSB0
-F_CPU                     ?= 16000000
+F_CPU                     ?= 14745600
 
 # Directories
 SOURCE_DIR                := src

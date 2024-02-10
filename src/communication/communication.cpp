@@ -9,7 +9,7 @@
 
 #include "communication.hpp"
 
-namespace communitation {
+namespace communication {
 
 #ifdef UNITTEST
 void teardown() {
@@ -30,13 +30,13 @@ void setup() {
 	       | (0<<UPM00)
 	       | (0<<USBS0)
 	       | (3<<UCSZ00);
-	
-	UCSR0B = (1<<RXEN0)
+	       
+    UCSR0B = (1<<RXEN0)
 	       | (1<<TXEN0)
 	       | (1<<TXCIE0)
 	       | (1<<RXCIE0);
 	
-	receiver::setup();
+	//receiver::setup();
 	sender::setup();
 }
 

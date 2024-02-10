@@ -3,7 +3,7 @@
 
 #include "stdint.h"
 
-namespace communitation {
+namespace communication {
 namespace receiver {
 
 typedef enum {

@@ -14,7 +14,7 @@
 	//~ volatile bool must_reset;
 //~ };
 
-namespace communitation {
+namespace communication {
 namespace receiver {
 
 volatile uint8_t error_counts[error_count] = { 0 };

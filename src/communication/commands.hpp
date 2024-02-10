@@ -5,6 +5,10 @@
 
 #include "receiver/command_info.hpp"
 
-const CommandInfo * const CommandGetInfoGet(const uint8_t command_id);
+namespace communication {
+
+const receiver::CommandInfo * const commandGetInfoGet(const uint8_t command_id);
+
+} // End of: namespace communication
 
 #endif // COMMUNICATION_COMMANDS_H_
