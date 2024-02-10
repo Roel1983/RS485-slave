@@ -1,5 +1,6 @@
 #include <avr/interrupt.h>
 #include <util/delay.h>
+#include <avr/io.h> // Debug
 
 #include <string.h>
 
@@ -22,6 +23,9 @@ int main (void)
 void Setup() {
 	communication::setup();
 	sei();
+	
+	DDRB   |= _BV(5); // Debug
+	DDRB   |= _BV(4); // Debug
 }
 
 volatile bool b = false;
@@ -36,7 +40,7 @@ void Loop() {
 	command.payload_buffer = (uint8_t*)buffer;
 	communication::sender::send(command);
 	
-	_delay_ms(10);
+	_delay_ms(1000);
 }
 
 void communication::sender::onSendComplete() {

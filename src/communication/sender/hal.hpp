@@ -11,6 +11,11 @@ namespace hal {
 #define ON_READY_TO_SEND_NEXT_BYTE() ISR(USART_UDRE_vect)
 #define ON_LAST_BYTE_SEND_COMPLETE() ISR(USART_TX_vect)
 
+PRIVATE INLINE void setup() {
+	DDRC   |= _BV(3);
+	UCSR0B |= _BV(TXEN0) | _BV(TXCIE0);
+}
+
 PRIVATE INLINE void enableReadyToSendInterrupt() {
 	UCSR0B |= _BV(UDRIE0);
 }
@@ -21,11 +26,6 @@ PRIVATE INLINE void disableReadyToSendInterrupt() {
 
 PRIVATE INLINE void sendByte(const uint8_t data_byte) {
 	UDR0 = data_byte;
-}
-
-PRIVATE INLINE void setup() {
-	DDRC   |= _BV(3);
-	UCSR0B |= _BV(TXEN0) | _BV(TXCIE0);
 }
 
 PRIVATE INLINE void txEnable() {

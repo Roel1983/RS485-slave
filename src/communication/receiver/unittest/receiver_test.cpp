@@ -2,32 +2,31 @@
 
 #include <avr/io.h>
 
+#include "../../../macros.hpp"
 #include "../receiver.hpp"
 
 using namespace ::testing;
-using namespace ::communication;
+using namespace ::communication::receiver;
+
+namespace communication {
+namespace receiver {
+extern PRIVATE INLINE void processIncommingByte(const uint8_t data_byte);
+}}
 
 class CommunitionReceiverReceiver : public Test {
 protected:
 	void TearDown() override {
-		receiver::teardown();
+		teardown();
 	}
 };
 
-TEST_F(CommunitionReceiverReceiver, begin) {
-	receiver::setup();
-	
-#if F_CPU == 16000000
-	EXPECT_EQ(UBRR0H, 0x00);
-	EXPECT_EQ(UBRR0L, 0x10);
-#elif F_CPU == 14745600
-	EXPECT_EQ(UBRR0H, 0x00);
-	EXPECT_EQ(UBRR0L, 0x0F);
-#else
-	FAIL() << "No expected value for F_CPU = " << F_CPU;
-#endif
-	
-	EXPECT_TRUE(UCSR0A & (1<<U2X0));
-	EXPECT_EQ(UCSR0C, (0<<UMSEL00) | (0<<UPM00) | (0<<USBS0)  | (3<<UCSZ00));
-	EXPECT_EQ(UCSR0B, (1<<RXEN0)   | (1<<TXEN0) | (1<<TXCIE0) | (1<<RXCIE0));
+TEST_F(CommunitionReceiverReceiver, test) {
+	processIncommingByte((uint8_t)0x55);
+	processIncommingByte((uint8_t)0x55);
+	processIncommingByte((uint8_t)0xff);
+	processIncommingByte((uint8_t)0x02);
+	processIncommingByte((uint8_t)0x00);
+	processIncommingByte((uint8_t)0x12);
+	processIncommingByte((uint8_t)0x34);
+	processIncommingByte((uint8_t)0xB9);
 }

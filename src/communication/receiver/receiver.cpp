@@ -77,6 +77,8 @@ void setup() {
 }
 
 ISR(USART_RX_vect) {
+	PORTB |= _BV(5); // DEBUG
+	
 	const bool has_signal_error = (UCSR0A & ((1 << FE0) | (1 << DOR0) | (1 << UPE0))) != 0;
 	if(has_signal_error) {
 		raiseError(ERROR_SIGNAL);
@@ -86,6 +88,7 @@ ISR(USART_RX_vect) {
 		const uint8_t data_byte = UDR0;
 		processIncommingByte(data_byte);
 	}
+	PORTB &= ~_BV(5); // DEBUG
 }
 
 PRIVATE INLINE void processIncommingByte(const uint8_t data_byte) {
@@ -144,6 +147,7 @@ PRIVATE INLINE void receivePreamble(const uint8_t data_byte) {
 	}
 	if (++isr.preamble_count >= PREAMBLE_COUNT) {
 		isr.crc = 0;
+		isr.remaining_payload_length = 0;
 		isr.state = STATE_SENDER_UNIQUE_ID;
 	}
 }
@@ -172,7 +176,7 @@ PRIVATE INLINE void receiveCommandId(const uint8_t data_byte) {
 		return;
 	}
 	
-	if (isr.command_info->type == COMMAND_TYPE_BROADCAST) {
+	if (isr.command_info->type == COMMAND_TYPE_BROADCAST) {		
 		receiveCommandIdBroadcast();
 	} else {
 		receiveCommandIdAddressable();
@@ -205,8 +209,8 @@ PRIVATE INLINE void receiveCommandIdBroadcast() {
 	}
 	command.lock = COMMAND_LOCK_WRITE;
 	
-	isr.read_byte_pos   = command.buffer;
 	isr.read_byte_count = isr.remaining_payload_length;
+	isr.read_byte_pos   = command.buffer;
 	isr.state           = STATE_CRC;
 }
 

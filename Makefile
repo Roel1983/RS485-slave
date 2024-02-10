@@ -157,12 +157,12 @@ $(FIRMWARE_HEX_FILE): $(FIRMWARE_ELF_FILE) | avr-gcc
 
 $(FIRMWARE_ELF_FILE): $(FIRMWARE_OBJECT_FILES) | avr-gcc
 	@$(call mkdir, $(dir $@))
-	avr-gcc -std=c++17 -mmcu=atmega328 $(FIRMWARE_OBJECT_FILES) -o $@
+	avr-gcc -O3 -std=c++17 -mmcu=atmega328 $(FIRMWARE_OBJECT_FILES) -o $@
 
 $(FIRMWARE_BUILD_DIR)/%.o: %.cpp
 $(FIRMWARE_BUILD_DIR)/%.o: %.cpp $(FIRMWARE_BUILD_DIR)/%.d | avr-gcc Makefile
 	@$(call mkdir, $(dir $@))
-	avr-gcc -std=c++17 -fshort-enums -c -DF_CPU=$(F_CPU) -Wall -Os $(DEPFLAGS) -mmcu=atmega328 $< -o $@
+	avr-gcc -O3 -std=c++17 -fshort-enums -c -DF_CPU=$(F_CPU) -Wall -Os $(DEPFLAGS) -mmcu=atmega328 $< -o $@
 
 # Unittest
 $(UNITTEST_EXECUTABLE_FILE): $(UNITTEST_OBJECT_FILES)

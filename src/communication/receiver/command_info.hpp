@@ -38,7 +38,7 @@ public:
 	  , block_size(Command<_command_type, T>::block_size)
 	  , is_allow_notify_from_isr(_is_allow_notify_from_isr)
 	  , command(_command)
-	  , function(nullptr /*(void*)func*/)
+	  , function((void*)func)
 	  , on_received(CommandNotifierTrait<T, commandTypeGetBlockCount(_command_type)>::Notifier::onReceived)
 	{}
 	

@@ -1,4 +1,3 @@
-#include <avr/interrupt.h>
 #include <avr/io.h>
 
 #include <stdint.h>
@@ -147,8 +146,8 @@ ON_LAST_BYTE_SEND_COMPLETE() {
 	}
 }
 
-PRIVATE void __onSendComplete() __attribute__ ((unused));
-PRIVATE void __onSendComplete() {}
+static void __onSendComplete() __attribute__ ((unused));
+static void __onSendComplete() {}
 void onSendComplete() __attribute__ ((weak, alias ("_ZN13communication6senderL16__onSendCompleteEv")));
 
 }}
