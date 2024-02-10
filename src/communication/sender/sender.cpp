@@ -68,7 +68,7 @@ bool send(Command& new_command) {
 	return true;
 }
 
-PRIVATE INLINE void hal::onReadyToSendNextByte() {
+ON_READY_TO_SEND_NEXT_BYTE() {
 	if (sendBody()) {
 		return;
 	}
@@ -139,7 +139,7 @@ PRIVATE INLINE void sendCrc() {
 	hal::disableReadyToSendInterrupt();
 }
 
-ISR(USART_TX_vect) {
+ON_LAST_BYTE_SEND_COMPLETE() {
 	isr.state = STATE_IDLE;
 	onSendComplete();
 	if (isr.state != STATE_PREAMBLE) {

@@ -7,6 +7,9 @@
 namespace communication {
 namespace sender {
 namespace hal {
+	
+#define ON_READY_TO_SEND_NEXT_BYTE() ISR(USART_UDRE_vect)
+#define ON_LAST_BYTE_SEND_COMPLETE() ISR(USART_TX_vect)
 
 PRIVATE INLINE void enableReadyToSendInterrupt() {
 	UCSR0B |= _BV(UDRIE0);
@@ -32,9 +35,6 @@ PRIVATE INLINE void txEnable() {
 PRIVATE INLINE void txDisable() {
 	PORTC &= ~_BV(3); // Possible race condition
 }
-
-PRIVATE INLINE void onReadyToSendNextByte();
-PRIVATE INLINE void onByteSendDone();
 
 }}} // End of: namespace communication::sender::hal
 
