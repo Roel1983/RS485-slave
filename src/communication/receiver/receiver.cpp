@@ -73,7 +73,8 @@ void teardown() {
 #endif
 
 void setup() {
-	UCSR0B |= (1<<TXEN0) | (1<<TXCIE0);
+	UCSR0B |= _BV(RXEN0)
+	       |  _BV(RXCIE0);
 }
 
 ISR(USART_RX_vect) {

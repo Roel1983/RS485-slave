@@ -13,7 +13,8 @@ namespace hal {
 
 PRIVATE INLINE void setup() {
 	DDRC   |= _BV(3);
-	UCSR0B |= _BV(TXEN0) | _BV(TXCIE0);
+	UCSR0B |= _BV(TXEN0)
+	       |  _BV(TXCIE0);
 }
 
 PRIVATE INLINE void enableReadyToSendInterrupt() {
