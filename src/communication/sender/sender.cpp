@@ -8,6 +8,7 @@
 #include "../communication.hpp"
 #include "../command_types.hpp"
 
+#include "hal.hpp"
 #include "sender.hpp"
 
 using namespace communication;
@@ -42,24 +43,16 @@ PRIVATE INLINE void sendCommandId();
 PRIVATE INLINE bool sendBody();
 PRIVATE INLINE void sendCrc();
 
-PRIVATE INLINE void enableReadyToSendInterrupt();
-PRIVATE INLINE void disableReadyToSendInterrupt();
-PRIVATE INLINE void sendByte(const uint8_t data_byte);
-PRIVATE INLINE void txSetup();
-PRIVATE INLINE void txEnable();
-PRIVATE INLINE void txDisable();
-
 #ifdef UNITTEST
 void teardown() {
 	memset((void*)&command, 0, sizeof(command));
-	comm_send_txen = false;
 	memset(&isr, 0, sizeof(isr));
 }
 #endif
 
 void setup() {
 	memset(&isr, 0, sizeof(isr));
-	txSetup();
+	hal::setup();
 }
 
 bool send(Command& new_command) {
@@ -70,12 +63,12 @@ bool send(Command& new_command) {
 	isr.preamble_count = 0;
 	isr.state          = STATE_PREAMBLE;
 	
-	txEnable();
-	enableReadyToSendInterrupt();
+	hal::txEnable();
+	hal::enableReadyToSendInterrupt();
 	return true;
 }
 
-ISR(USART_UDRE_vect) {
+PRIVATE INLINE void hal::onReadyToSendNextByte() {
 	if (sendBody()) {
 		return;
 	}
@@ -104,13 +97,13 @@ PRIVATE INLINE void sendPreamble() {
 	if (++isr.preamble_count >= PREAMBLE_COUNT) {
 		isr.state = STATE_SENDER_UNIQUE_ID;
 	}
-	sendByte(PREAMBLE_BYTE);
+	hal::sendByte(PREAMBLE_BYTE);
 }
 
 PRIVATE INLINE void sendSenderUniqueId() {
 	const uint8_t sender_unique_id = commandTypeGetBlockNr(COMMAND_TYPE_UNIQUE);
 	isr.crc   = sender_unique_id;
-	sendByte(sender_unique_id);
+	hal::sendByte(sender_unique_id);
 	isr.state = STATE_LENGTH;
 }
 
@@ -118,7 +111,7 @@ PRIVATE INLINE void sendLength() {
 	const uint8_t length = command.payload_length + 1;
 	assert((length & EXTENDED_PAYLOAD_LENGHT_MASK) == 0);
 	isr.crc   += length;
-	sendByte(length);
+	hal::sendByte(length);
 	isr.state  = STATE_COMMAND_ID;
 }
 
@@ -126,7 +119,7 @@ PRIVATE INLINE void sendCommandId() {
 	isr.write_byte_count = command.payload_length;
 	isr.write_byte_pos   = command.payload_buffer;
 	isr.crc             += command.id;
-	sendByte(command.id);
+	hal::sendByte(command.id);
 	isr.state            = STATE_CRC;
 }
 
@@ -137,45 +130,21 @@ PRIVATE INLINE bool sendBody() {
 	--isr.write_byte_count;
 	uint8_t data_byte = *(isr.write_byte_pos++);
 	isr.crc -= data_byte;
-	sendByte(data_byte);
+	hal::sendByte(data_byte);
 	return true;
 }
 
 PRIVATE INLINE void sendCrc() {
-	sendByte(0x00 - isr.crc);
-	disableReadyToSendInterrupt();
+	hal::sendByte(0x00 - isr.crc);
+	hal::disableReadyToSendInterrupt();
 }
 
 ISR(USART_TX_vect) {
 	isr.state = STATE_IDLE;
 	onSendComplete();
 	if (isr.state != STATE_PREAMBLE) {
-		txDisable();
+		hal::txDisable();
 	}
-}
-
-PRIVATE INLINE void enableReadyToSendInterrupt() {
-	UCSR0B |= _BV(UDRIE0);
-}
-
-PRIVATE INLINE void disableReadyToSendInterrupt() {
-	UCSR0B &= ~_BV(UDRIE0);
-}
-
-PRIVATE INLINE void sendByte(const uint8_t data_byte) {
-	UDR0 = data_byte;
-}
-
-PRIVATE INLINE void txSetup() {
-	DDRC |= _BV(3);
-}
-
-PRIVATE INLINE void txEnable() {
-	PORTC |= _BV(3); // Possible race condition
-}
-
-PRIVATE INLINE void txDisable() {
-	PORTC &= ~_BV(3); // Possible race condition
 }
 
 PRIVATE void __onSendComplete() __attribute__ ((unused));

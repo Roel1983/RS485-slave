@@ -36,7 +36,7 @@ void Loop() {
 	command.payload_buffer = (uint8_t*)buffer;
 	communication::sender::send(command);
 	
-	_delay_ms(1000);
+	_delay_ms(10);
 }
 
 void communication::sender::onSendComplete() {
