@@ -100,7 +100,7 @@ PRIVATE INLINE void sendPreamble() {
 }
 
 PRIVATE INLINE void sendSenderUniqueId() {
-	const uint8_t sender_unique_id = commandTypeGetBlockNr(COMMAND_TYPE_UNIQUE);
+	const uint8_t sender_unique_id = commandTypeGetBlockNr(COMMAND_TYPE_UNIQUE_ID);
 	isr.crc   = sender_unique_id;
 	hal::sendByte(sender_unique_id);
 	isr.state = STATE_COMMAND_ID;

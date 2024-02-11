@@ -33,10 +33,10 @@ void Setup() {
 		((PORTB & _BV(0)) ? 0 : 0b01000) |
 		((PORTB & _BV(1)) ? 0 : 0b10000);*/
 	
-	communication::commandTypeSetBlockNr(COMMAND_TYPE_UNIQUE, 1);
+	communication::commandTypeSetBlockNr(COMMAND_TYPE_UNIQUE_ID, 0);
 	sei();
 }
 
 void Loop() {
-	
+	communication::loop();
 }

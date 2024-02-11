@@ -9,6 +9,7 @@ void tearDown();
 #endif
 
 void setup();
+void loop();
 
 }} // namespace ::communitation::receiver
 

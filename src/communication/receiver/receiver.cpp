@@ -78,6 +78,19 @@ void setup() {
 	       |  _BV(RXCIE0);
 }
 
+void loop() {
+	const uint8_t count = getCommandInfoCount();
+	for (uint8_t command_id = 0; command_id < count; command_id++) {
+		const receiver::CommandInfo *command_info = getCommandInfo(command_id);
+		if (!command_info) {
+			continue;
+		}
+		if (command_info->command.lock == COMMAND_LOCK_READ) {
+			notifyCommandReceived(*command_info);
+		}
+	}
+}
+
 ISR(USART_RX_vect) {
 	PORTB |= _BV(5); // DEBUG
 	
@@ -161,7 +174,7 @@ PRIVATE INLINE void receiveSenderUniqueId(const uint8_t data_byte) {
 
 PRIVATE INLINE void receiveCommandId(const uint8_t data_byte) {
 	const uint8_t command_id = data_byte;
-	isr.command_info         = commandGetInfoGet(command_id);
+	isr.command_info         = getCommandInfo(command_id);
 	isr.state                = STATE_PAYLOAD_LENGTH;
 }
 
@@ -225,7 +238,7 @@ PRIVATE INLINE void receiveBlockNr(const uint8_t data_byte) {
 	
 	const uint8_t block_count = isr.remaining_payload_length / isr.command_info->block_size;
 	
-	if (isr.remaining_payload_length == block_count * isr.command_info->block_size) {
+	if (isr.remaining_payload_length != block_count * isr.command_info->block_size) {
 		receiveSkipRemainingPayload();
 		raiseError(ERROR_INVALID_LENGTH);
 		isr.preamble_count = 0;

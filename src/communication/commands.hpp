@@ -7,7 +7,8 @@
 
 namespace communication {
 
-const receiver::CommandInfo * const commandGetInfoGet(const uint8_t command_id);
+const receiver::CommandInfo * const getCommandInfo(const uint8_t command_id);
+uint8_t getCommandInfoCount();
 
 } // End of: namespace communication
 

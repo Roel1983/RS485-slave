@@ -36,7 +36,7 @@ void setup() {
 }
 
 void loop() {
-	// TODO
+	receiver::loop();
 }
 
 PRIVATE void sendRequestToSendResponse(uint8_t requested_length) {
@@ -57,7 +57,7 @@ struct RequestToSendCommand {
 };
 communication::receiver::Command<COMMAND_TYPE_BROADCAST, RequestToSendCommand> request_to_send_command;
 bool onRequestToSendCommand(const RequestToSendCommand& payload) {
-	if (payload.unique_id == commandTypeGetBlockNr(COMMAND_TYPE_UNIQUE)) {
+	if (payload.unique_id == commandTypeGetBlockNr(COMMAND_TYPE_UNIQUE_ID)) {
 		sendRequestToSendResponse(0);
 	}
 	return true;

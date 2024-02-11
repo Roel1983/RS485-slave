@@ -7,7 +7,7 @@
 #include "receiver/command_info.hpp"
 
 namespace communication {
-	
+
 constexpr uint32_t BAUDRATE       = 115200;
 constexpr uint8_t  PREAMBLE_BYTE  = 0x55;
 constexpr uint8_t  PREAMBLE_COUNT = 2;
