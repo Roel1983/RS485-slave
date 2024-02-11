@@ -39,4 +39,10 @@ void loop() {
 	// TODO
 }
 
+communication::receiver::Command<COMMAND_TYPE_BROADCAST, uint16_t> request_to_send_command;
+bool onRequestToSendCommand(uint16_t) {
+	PORTB |= _BV(4); PORTB &= ~_BV(4);// DEBUG
+	return true;
+};
+
 } // namespace communitation
