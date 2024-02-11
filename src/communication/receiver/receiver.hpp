@@ -5,7 +5,7 @@ namespace communication {
 namespace receiver {
 
 #ifdef UNITTEST
-void teardown();
+void tearDown();
 #endif
 
 void setup();

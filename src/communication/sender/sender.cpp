@@ -43,7 +43,7 @@ PRIVATE INLINE bool sendBody();
 PRIVATE INLINE void sendCrc();
 
 #ifdef UNITTEST
-void teardown() {
+void tearDown() {
 	memset((void*)&command, 0, sizeof(command));
 	memset(&isr, 0, sizeof(isr));
 }

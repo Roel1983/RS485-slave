@@ -18,7 +18,7 @@ typedef enum {
 constexpr int error_count = 6;
 
 #ifdef UNITTEST
-void ReceiverErrorsReset();
+void ReceiverErrorsTearDown();
 #endif
 
 void raiseError(const Error error);

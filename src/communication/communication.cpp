@@ -12,9 +12,9 @@
 namespace communication {
 
 #ifdef UNITTEST
-void teardown() {
-	receiver::teardown();
-	sender::teardown();
+void tearDown() {
+	receiver::tearDown();
+	sender::tearDown();
 }
 #endif
 

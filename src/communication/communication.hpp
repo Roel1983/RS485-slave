@@ -14,7 +14,7 @@ constexpr uint8_t  PREAMBLE_COUNT = 2;
 constexpr uint8_t  EXTENDED_PAYLOAD_LENGHT_MASK = 0x80;
 
 #ifdef UNITTEST
-void teardown();
+void tearDown();
 #endif
 
 void setup();

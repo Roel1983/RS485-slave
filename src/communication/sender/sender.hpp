@@ -11,7 +11,7 @@ struct Command {
 };
 
 #ifdef UNITTEST
-void teardown();
+void tearDown();
 #endif
 
 void setup();

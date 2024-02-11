@@ -67,9 +67,9 @@ PRIVATE INLINE void notifyMultiBlockCommandReceived(const CommandInfo& command_i
 PRIVATE void receiveSkipRemainingPayload();
 
 #ifdef UNITTEST
-void teardown() {
+void tearDown() {
 	memset(&isr, 0, sizeof(isr));
-	ReceiverErrorsReset();
+	ReceiverErrorsTearDown();
 }
 #endif
 
@@ -81,13 +81,13 @@ void setup() {
 ISR(USART_RX_vect) {
 	PORTB |= _BV(5); // DEBUG
 	
+	const uint8_t data_byte = UDR0; // Read regardless signal error in order to reset interrupt flag
 	const bool has_signal_error = (UCSR0A & ((1 << FE0) | (1 << DOR0) | (1 << UPE0))) != 0;
 	if(has_signal_error) {
 		raiseError(ERROR_SIGNAL);
 		isr.preamble_count = 0;
 		isr.state          = STATE_PREAMBLE;
 	} else {
-		const uint8_t data_byte = UDR0;
 		processIncommingByte(data_byte);
 	}
 	PORTB &= ~_BV(5); // DEBUG
