@@ -19,8 +19,8 @@ typedef enum {
 	STATE_IDLE,
 	STATE_PREAMBLE,
 	STATE_SENDER_UNIQUE_ID,
-	STATE_LENGTH,
 	STATE_COMMAND_ID,
+	STATE_LENGTH,
 	STATE_CRC,
 } State;
 
@@ -37,8 +37,8 @@ Isr isr;
 
 PRIVATE INLINE void sendPreamble();
 PRIVATE INLINE void sendSenderUniqueId();
-PRIVATE INLINE void sendLength();
 PRIVATE INLINE void sendCommandId();
+PRIVATE INLINE void sendLength();
 PRIVATE INLINE bool sendBody();
 PRIVATE INLINE void sendCrc();
 
@@ -80,11 +80,11 @@ ON_READY_TO_SEND_NEXT_BYTE() {
 	case STATE_SENDER_UNIQUE_ID:
 		sendSenderUniqueId();
 		return;
-	case STATE_LENGTH:
-		sendLength();
-		return;
 	case STATE_COMMAND_ID:
 		sendCommandId();
+		return;
+	case STATE_LENGTH:
+		sendLength();
 		return;
 	case STATE_CRC:
 		sendCrc();
@@ -103,23 +103,23 @@ PRIVATE INLINE void sendSenderUniqueId() {
 	const uint8_t sender_unique_id = commandTypeGetBlockNr(COMMAND_TYPE_UNIQUE);
 	isr.crc   = sender_unique_id;
 	hal::sendByte(sender_unique_id);
-	isr.state = STATE_LENGTH;
-}
-
-PRIVATE INLINE void sendLength() {
-	const uint8_t length = command.payload_length + 1;
-	assert((length & EXTENDED_PAYLOAD_LENGHT_MASK) == 0);
-	isr.crc   += length;
-	hal::sendByte(length);
-	isr.state  = STATE_COMMAND_ID;
+	isr.state = STATE_COMMAND_ID;
 }
 
 PRIVATE INLINE void sendCommandId() {
+	isr.crc    += command.id;
+	hal::sendByte(command.id);
+	isr.state   = STATE_LENGTH;
+}
+
+PRIVATE INLINE void sendLength() {
 	isr.write_byte_count = command.payload_length;
 	isr.write_byte_pos   = command.payload_buffer;
-	isr.crc             += command.id;
-	hal::sendByte(command.id);
-	isr.state            = STATE_CRC;
+	const uint8_t length = command.payload_length;
+	assert((length & EXTENDED_PAYLOAD_LENGHT_MASK) == 0);
+	isr.crc   += length;
+	hal::sendByte(length);
+	isr.state  = STATE_CRC;
 }
 
 PRIVATE INLINE bool sendBody() {

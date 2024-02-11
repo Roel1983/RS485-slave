@@ -20,8 +20,8 @@ namespace receiver {
 typedef enum {
 	STATE_PREAMBLE,
 	STATE_SENDER_UNIQUE_ID,
-	STATE_PAYLOAD_LENGTH,
 	STATE_COMMAND_ID,
+	STATE_PAYLOAD_LENGTH,
 	STATE_BLOCK_NR,
 	STATE_CRC,
 } State;
@@ -50,12 +50,13 @@ PRIVATE INLINE void processIncommingByte     (const uint8_t data_byte);
 PRIVATE INLINE bool receiveBlockData         (const uint8_t data_byte);
 PRIVATE INLINE void receivePreamble          (const uint8_t data_byte);
 PRIVATE INLINE void receiveSenderUniqueId    (const uint8_t data_byte);
-PRIVATE INLINE void receivePayloadLength     (const uint8_t data_byte);
 PRIVATE INLINE void receiveCommandId         (const uint8_t data_byte);
-PRIVATE INLINE void receiveCommandIdUnknownCommand();
-PRIVATE INLINE void receiveCommandIdBroadcast();
-PRIVATE INLINE void receiveCommandIdAddressable();
+PRIVATE INLINE void receivePayloadLength     (const uint8_t data_byte);
+PRIVATE INLINE void receiveUnknownCommand();
+PRIVATE INLINE void receiveBroadcastCommand();
+PRIVATE INLINE void receiveAddressableCommand();
 PRIVATE INLINE void receiveBlockNr           (const uint8_t data_byte);
+
 PRIVATE INLINE void calculateReceiveBlockData(CommandBase& command, const uint8_t block_count);
 PRIVATE INLINE void receiveCrc               (const uint8_t data_byte);
 
@@ -106,11 +107,11 @@ PRIVATE INLINE void processIncommingByte(const uint8_t data_byte) {
 	case STATE_SENDER_UNIQUE_ID:
 		receiveSenderUniqueId(data_byte);
 		return;
-	case STATE_PAYLOAD_LENGTH:
-		receivePayloadLength(data_byte);
-		return;
 	case STATE_COMMAND_ID:
 		receiveCommandId(data_byte);
+		return;
+	case STATE_PAYLOAD_LENGTH:
+		receivePayloadLength(data_byte);
 		return;
 	case STATE_BLOCK_NR:
 		receiveBlockNr(data_byte);
@@ -155,7 +156,13 @@ PRIVATE INLINE void receivePreamble(const uint8_t data_byte) {
 
 PRIVATE INLINE void receiveSenderUniqueId(const uint8_t data_byte) {
 	isr.sender_unique_id = data_byte;
-	isr.state = STATE_PAYLOAD_LENGTH;
+	isr.state = STATE_COMMAND_ID;
+}
+
+PRIVATE INLINE void receiveCommandId(const uint8_t data_byte) {
+	const uint8_t command_id = data_byte;
+	isr.command_info         = commandGetInfoGet(command_id);
+	isr.state                = STATE_PAYLOAD_LENGTH;
 }
 
 PRIVATE INLINE void receivePayloadLength(const uint8_t data_byte) {
@@ -165,33 +172,24 @@ PRIVATE INLINE void receivePayloadLength(const uint8_t data_byte) {
 	} else {
 		isr.remaining_payload_length |= data_byte;
 	}
-	isr.state = STATE_COMMAND_ID;
-}
-
-PRIVATE INLINE void receiveCommandId(const uint8_t data_byte) {
-	const uint8_t command_id = data_byte;
 	
-	isr.command_info = commandGetInfoGet(command_id);
 	if (!isr.command_info) {
-		receiveCommandIdUnknownCommand();
-		return;
-	}
-	
-	if (isr.command_info->type == COMMAND_TYPE_BROADCAST) {		
-		receiveCommandIdBroadcast();
+		receiveUnknownCommand();
+	} else if (isr.command_info->type == COMMAND_TYPE_BROADCAST) {		
+		receiveBroadcastCommand();
 	} else {
-		receiveCommandIdAddressable();
+		receiveAddressableCommand();
 	}
 }
 
-PRIVATE INLINE void receiveCommandIdUnknownCommand() {
+PRIVATE INLINE void receiveUnknownCommand() {
 	receiveSkipRemainingPayload();
 	raiseError(ERROR_UNKNOW_COMMAND);
 	isr.preamble_count = 0;
 	isr.state          = STATE_PREAMBLE;
 }
 
-PRIVATE INLINE void receiveCommandIdBroadcast() {
+PRIVATE INLINE void receiveBroadcastCommand() {
 	CommandBase& command(isr.command_info->command);
 	
 	if (isr.command_info->block_size != isr.remaining_payload_length) {
@@ -215,7 +213,7 @@ PRIVATE INLINE void receiveCommandIdBroadcast() {
 	isr.state           = STATE_CRC;
 }
 
-PRIVATE INLINE void receiveCommandIdAddressable() {
+PRIVATE INLINE void receiveAddressableCommand() {
 	isr.state = STATE_BLOCK_NR;
 }
 
