@@ -1,4 +1,3 @@
-//#include <avr/interrupt.h>
 #include <avr/io.h>
 
 #include <stdint.h>
@@ -7,6 +6,7 @@
 #include "receiver/receiver.hpp"
 #include "sender/sender.hpp"
 
+#include "command_types.hpp"
 #include "communication.hpp"
 
 namespace communication {
@@ -39,10 +39,32 @@ void loop() {
 	// TODO
 }
 
-communication::receiver::Command<COMMAND_TYPE_BROADCAST, uint16_t> request_to_send_command;
-bool onRequestToSendCommand(uint16_t) {
-	PORTB |= _BV(4); PORTB &= ~_BV(4);// DEBUG
+PRIVATE void sendRequestToSendResponse(uint8_t requested_length) {
+	static uint8_t _requested_length;
+	static communication::sender::Command request_to_send_response = {
+		.id             = 0x01,
+		.payload_length = sizeof(_requested_length),
+		.payload_buffer = &_requested_length
+	};
+
+	_requested_length = requested_length; 
+	communication::sender::send(request_to_send_response);
+}
+
+struct RequestToSendCommand {
+	uint8_t unique_id;
+	uint8_t max_length;
+};
+communication::receiver::Command<COMMAND_TYPE_BROADCAST, RequestToSendCommand> request_to_send_command;
+bool onRequestToSendCommand(const RequestToSendCommand& payload) {
+	if (payload.unique_id == commandTypeGetBlockNr(COMMAND_TYPE_UNIQUE)) {
+		sendRequestToSendResponse(0);
+	}
 	return true;
 };
+communication::receiver::CommandInfo request_to_send_command_info(
+	request_to_send_command,
+	onRequestToSendCommand,
+	true);
 
 } // namespace communitation

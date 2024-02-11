@@ -1,6 +1,6 @@
 #include <avr/interrupt.h>
+#include <avr/io.h>
 #include <util/delay.h>
-#include <avr/io.h> // Debug
 
 #include <string.h>
 
@@ -22,35 +22,21 @@ int main (void)
 
 void Setup() {
 	communication::setup();
-	sei();
 	
-	DDRB   |= _BV(5); // Debug
-	DDRB   |= _BV(4); // Debug
+	/*
+	PORTB |=  (_BV(0) | _BV(1));
+	PORTD |=  (_BV(4) | _BV(7) | _BV(6));
+	const uint8_t unique_id = 
+		((PORTD & _BV(4)) ? 0 : 0b00001) |
+		((PORTD & _BV(6)) ? 0 : 0b00010) |
+		((PORTD & _BV(7)) ? 0 : 0b00100) |
+		((PORTB & _BV(0)) ? 0 : 0b01000) |
+		((PORTB & _BV(1)) ? 0 : 0b10000);*/
+	
+	communication::commandTypeSetBlockNr(COMMAND_TYPE_UNIQUE, 0);
+	sei();
 }
-
-volatile bool b = false;
 
 void Loop() {
 	
-	b = true;
-	char buffer[] = "hello world"; 
-	communication::sender::Command command;
-	command.id             = 0x66;
-	command.payload_length = strlen(buffer);
-	command.payload_buffer = (uint8_t*)buffer;
-	communication::sender::send(command);
-	
-	_delay_ms(1000);
-}
-
-void communication::sender::onSendComplete() {
-	if (b) {
-		b = false;
-		char buffer[] = "moon"; 
-		communication::sender::Command command;
-		command.id             = 0x10;
-		command.payload_length = strlen(buffer);
-		command.payload_buffer = (uint8_t*)buffer;
-		communication::sender::send(command);
-	}
 }

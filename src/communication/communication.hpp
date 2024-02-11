@@ -20,11 +20,7 @@ void teardown();
 void setup();
 void loop();
 
-extern communication::receiver::Command<COMMAND_TYPE_BROADCAST, uint16_t> request_to_send_command;
-extern bool onRequestToSendCommand(uint16_t);
-constexpr communication::receiver::CommandInfo request_to_send_command_info(
-	request_to_send_command,
-	onRequestToSendCommand, true);
+extern communication::receiver::CommandInfo request_to_send_command_info;
 
 } // namespace communitation
 

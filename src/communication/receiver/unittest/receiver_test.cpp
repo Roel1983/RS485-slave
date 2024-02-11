@@ -23,10 +23,10 @@ protected:
 TEST_F(CommunitionReceiverReceiver, test) {
 	processIncommingByte((uint8_t)0x55);
 	processIncommingByte((uint8_t)0x55);
-	processIncommingByte((uint8_t)0xff);
-	processIncommingByte((uint8_t)0x02);
-	processIncommingByte((uint8_t)0x00);
-	processIncommingByte((uint8_t)0x12);
-	processIncommingByte((uint8_t)0x34);
-	processIncommingByte((uint8_t)0xB9);
+	processIncommingByte((uint8_t)0xff); // Sender unique id
+	processIncommingByte((uint8_t)0x02); // Length
+	processIncommingByte((uint8_t)0x00); // Command: Request to send
+	processIncommingByte((uint8_t)0x01); // unique id
+	processIncommingByte((uint8_t)0x00); // max length
+	processIncommingByte((uint8_t)0xFE); // crc
 }
