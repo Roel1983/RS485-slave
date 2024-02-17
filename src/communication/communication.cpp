@@ -6,10 +6,12 @@
 #include "receiver/receiver.hpp"
 #include "sender/sender.hpp"
 
+#include "send_strategy.hpp"
 #include "command_types.hpp"
 #include "communication.hpp"
 
 namespace communication {
+
 
 #ifdef UNITTEST
 void tearDown() {
@@ -31,11 +33,13 @@ void setup() {
 	       | (0<<USBS0)
 	       | (3<<UCSZ00);
 	       
-    receiver::setup();
+	send_strategy::setup();
+	receiver::setup();
 	sender::setup();
 }
 
 void loop() {
+	send_strategy::loop();
 	receiver::loop();
 }
 
@@ -57,6 +61,7 @@ struct RequestToSendCommand {
 };
 communication::receiver::Command<COMMAND_TYPE_BROADCAST, RequestToSendCommand> request_to_send_command;
 bool onRequestToSendCommand(const RequestToSendCommand& payload) {
+	send_strategy::setOnDemand();
 	if (payload.unique_id == commandTypeGetBlockNr(COMMAND_TYPE_UNIQUE_ID)) {
 		sendRequestToSendResponse(0);
 	}

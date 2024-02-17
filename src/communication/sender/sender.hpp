@@ -21,5 +21,4 @@ extern void onSendComplete();
 
 }}
 
-
 #endif // COMMUNICATION_SENDER_SENDER_H_

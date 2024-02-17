@@ -8,6 +8,8 @@
 
 namespace communication {
 
+typedef bool (*PayloadWritter)(bool is_cancled, uint8_t payload_size, uint8_t payload_buffer);
+
 constexpr uint32_t BAUDRATE       = 115200;
 constexpr uint8_t  PREAMBLE_BYTE  = 0x55;
 constexpr uint8_t  PREAMBLE_COUNT = 2;
@@ -19,6 +21,20 @@ void tearDown();
 
 void setup();
 void loop();
+
+
+bool sendBroadcast(
+	uint8_t        command_id,
+	uint8_t        payload_size,
+	PayloadWritter payload_writer,
+	uint16_t       timeout
+);
+bool sendAddressable(
+	uint8_t        command_id,
+	uint8_t        block_nr,
+	uint8_t        payload_size,
+	PayloadWritter payload_writer,
+	uint16_t       timeout);
 
 extern communication::receiver::CommandInfo request_to_send_command_info;
 
