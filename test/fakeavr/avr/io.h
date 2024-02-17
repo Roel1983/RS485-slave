@@ -60,4 +60,34 @@ extern uint8_t UBRR0L;
 
 extern uint8_t UDR0;
 
+extern uint8_t TCCR1A;
+#define WGM10 0
+#define WGM11 1
+#define COM1B0 4
+#define COM1B1 5
+#define COM1A0 6
+#define COM1A1 7
+
+extern uint8_t TCCR1B;
+#define CS10 0
+#define CS11 1
+#define CS12 2
+#define WGM12 3
+#define WGM13 4
+#define ICES1 6
+#define ICNC1 7
+
+extern uint8_t TCCR1C;
+#define FOC1B 6
+#define FOC1A 7
+
+extern uint16_t OCR1A;
+
+extern uint8_t TIMSK1;
+#define TOIE1 0
+#define OCIE1A 1
+#define OCIE1B 2
+#define ICIE1 5
+
+
 #endif

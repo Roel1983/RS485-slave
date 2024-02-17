@@ -36,6 +36,21 @@ static constexpr uint8_t UBRR0L_initial_value = 0x00;
                  uint8_t UDR0;
 static constexpr uint8_t UDR0_initial_value = 0x00;
 
+                 uint8_t TCCR1A;
+static constexpr uint8_t TCCR1A_initial_value = 0x00;
+
+                 uint8_t TCCR1B;
+static constexpr uint8_t TCCR1B_initial_value = 0x00;
+
+                 uint8_t TCCR1C;
+static constexpr uint8_t TCCR1C_initial_value = 0x00;
+
+                 uint16_t OCR1A;
+static constexpr uint16_t OCR1A_initial_value = 0x00;
+
+                 uint8_t TIMSK1;
+static constexpr uint8_t TIMSK1_initial_value = 0x00;
+
 void FakeIoReset() {
 	DDRB   = DDRB_initial_value;
 	PORTB  = PORTB_initial_value;
@@ -52,4 +67,10 @@ void FakeIoReset() {
 	UBRR0L = UBRR0L_initial_value;
 	
 	UDR0   = UDR0_initial_value;
+	
+	TCCR1A = TCCR1A_initial_value;
+	TCCR1B = TCCR1B_initial_value;
+	TCCR1C = TCCR1C_initial_value;
+	OCR1A  = OCR1A_initial_value;
+	TIMSK1 = TIMSK1_initial_value;
 }
