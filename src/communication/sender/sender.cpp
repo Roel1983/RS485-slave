@@ -128,7 +128,7 @@ PRIVATE INLINE bool sendBody() {
 	}
 	--isr.write_byte_count;
 	uint8_t data_byte = *(isr.write_byte_pos++);
-	isr.crc -= data_byte;
+	isr.crc += data_byte;
 	hal::sendByte(data_byte);
 	return true;
 }
@@ -144,6 +144,10 @@ ON_LAST_BYTE_SEND_COMPLETE() {
 	if (isr.state != STATE_PREAMBLE) {
 		hal::txDisable();
 	}
+}
+
+bool is_sending() {
+	return isr.state != STATE_IDLE;
 }
 
 static void __onSendComplete() __attribute__ ((unused));

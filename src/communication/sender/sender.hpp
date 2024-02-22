@@ -17,6 +17,7 @@ void tearDown();
 void setup();
 
 bool send(Command& command);
+bool is_sending();
 extern void onSendComplete();
 
 }}
