@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "../macros.hpp"
+#include "../timestamp.hpp"
 #include "receiver/receiver.hpp"
 #include "sender/sender.hpp"
 
@@ -18,6 +19,7 @@ enum SendBufferLock {
 	SEND_BUFFER_WRITE_LOCKED,
 	SEND_BUFFER_UNLOCKED_FOR_READING,
 	SEND_BUFFER_READ_LOCKED,
+	SEND_BUFFER_CANCELED_LOCKED,
 };
 struct SendBuffer {
 	volatile SendBufferLock lock;
@@ -30,6 +32,9 @@ struct SendBuffer {
 
 PRIVATE constexpr uint8_t max_send_command_size = 40;
 PRIVATE volatile SendBuffer send_buffer = { SEND_BUFFER_UNLOCKED_FOR_WRITING };
+PRIVATE volatile uint32_t send_timestamp;
+
+PRIVATE constexpr uint32_t send_timeout = 2000;
 
 PRIVATE INLINE bool send(
 	uint8_t        command_id,
@@ -67,6 +72,21 @@ void setup() {
 void loop() {
 	send_strategy::loop();
 	receiver::loop();
+	
+	cli();
+	if (send_buffer.lock == SEND_BUFFER_UNLOCKED_FOR_READING) {
+		uint32_t current_timetamp = timestamp::getMsTimestamp();
+		if (current_timetamp - send_timestamp > send_timeout) {
+			send_buffer.lock = SEND_BUFFER_CANCELED_LOCKED;
+		}
+	};
+	sei();
+	if (send_buffer.lock == SEND_BUFFER_CANCELED_LOCKED) {
+		uint8_t length = 0;
+		send_buffer.lock = send_buffer.payload_writer(true, length, nullptr)
+			? SEND_BUFFER_UNLOCKED_FOR_WRITING
+			: SEND_BUFFER_UNLOCKED_FOR_READING;
+	}	
 }
 
 bool sendBroadcast(
@@ -86,28 +106,6 @@ bool sendAddressable(
 	return send(command_id, true, block_nr, payload_size, payload_writer);
 }
 
-PRIVATE INLINE bool lockSendBufferForWriting() {
-	cli();
-	if (send_buffer.lock != SEND_BUFFER_UNLOCKED_FOR_WRITING) {
-		sei();
-		return false;
-	}
-	send_buffer.lock = SEND_BUFFER_WRITE_LOCKED;
-	sei();
-	return true;
-}
-
-PRIVATE INLINE bool lockSendBufferForReading() {
-	cli();
-	if (send_buffer.lock != SEND_BUFFER_UNLOCKED_FOR_READING) {
-		sei();
-		return false;
-	}
-	send_buffer.lock = SEND_BUFFER_READ_LOCKED;
-	sei();
-	return true;
-}
-
 PRIVATE INLINE bool send(
 	uint8_t        command_id,
 	bool           is_addressable,
@@ -115,8 +113,18 @@ PRIVATE INLINE bool send(
 	uint8_t        payload_size,
 	PayloadWritter payload_writer
 ) {
-	if (payload_size >= max_send_command_size || !lockSendBufferForWriting()) {
+	if (payload_size >= max_send_command_size) {
 		return false;
+	}
+	{ 	
+		cli();
+		if (send_buffer.lock != SEND_BUFFER_UNLOCKED_FOR_WRITING) {
+			sei();
+			return false;
+		}
+		send_buffer.lock = SEND_BUFFER_WRITE_LOCKED;
+		send_timestamp   = timestamp::getMsTimestamp();
+		sei();
 	}
 	
 	send_buffer.command_id     = command_id;
@@ -135,9 +143,15 @@ PRIVATE INLINE bool send(
 PRIVATE bool sendFromBuffer(uint8_t *max_length) {
 	static communication::sender::Command send_command;
 	
-	if (!lockSendBufferForReading()) {
-		if(max_length) *max_length = 0;
-		return false;
+	{
+		cli();
+		if (send_buffer.lock != SEND_BUFFER_UNLOCKED_FOR_READING) {
+			sei();
+			if(max_length) *max_length = 0;
+			return false;
+		}
+		send_buffer.lock = SEND_BUFFER_READ_LOCKED;
+		sei();
 	}
 	if (max_length && send_buffer.payload_size > *max_length) {
 		if(max_length) *max_length = send_buffer.payload_size;

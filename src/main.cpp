@@ -56,8 +56,12 @@ void Loop() {
 		communication::sendBroadcast(
 			66,
 			5,
-			[](bool is_cancled, uint8_t& payload_size, uint8_t *payload_buffer) -> bool {
-				memcpy(payload_buffer, "hello", 5);
+			[](bool is_timeout, uint8_t& payload_size, uint8_t *payload_buffer) -> bool {
+				if (is_timeout) {
+					PORTB ^= _BV(2);
+				} else {
+					memcpy(payload_buffer, "hello", 5);
+				}
 				return true;
 			});
 	}

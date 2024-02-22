@@ -8,7 +8,7 @@
 
 namespace communication {
 
-typedef bool (*PayloadWritter)(bool is_cancled, uint8_t& payload_size, uint8_t *payload_buffer);
+typedef bool (*PayloadWritter)(bool is_timeout, uint8_t& payload_size, uint8_t *payload_buffer);
 
 constexpr uint32_t BAUDRATE       = 115200;
 constexpr uint8_t  PREAMBLE_BYTE  = 0x55;
