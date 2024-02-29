@@ -123,9 +123,9 @@ PRIVATE INLINE bool send(
 			return false;
 		}
 		send_buffer.lock = SEND_BUFFER_WRITE_LOCKED;
-		send_timestamp   = timestamp::getMsTimestamp();
 		sei();
 	}
+	send_timestamp   = timestamp::getMsTimestamp();
 	
 	send_buffer.command_id     = command_id;
 	send_buffer.is_addressable = is_addressable;
@@ -174,8 +174,8 @@ PRIVATE bool sendFromBuffer(uint8_t *max_length) {
 		return false;
 	};
 	send_command.id = send_buffer.command_id;
+	communication::sender::send(send_command); // Buggy, might reject because is sending
 	send_buffer.lock = SEND_BUFFER_UNLOCKED_FOR_WRITING;
-	communication::sender::send(send_command);
 	return true;
 }
 
@@ -185,7 +185,7 @@ void onStrategyChangedToSendAtWill() {
 	}
 }
 
-void onSendComplete() {
+void communication::sender::onSendComplete() {
 	if (send_strategy::get() == send_strategy::STRATEGY_SEND_AT_WILL) {
 		(void)sendFromBuffer(nullptr);
 	}
