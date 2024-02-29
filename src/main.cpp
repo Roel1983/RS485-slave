@@ -21,48 +21,43 @@ int main (void)
 }
 #endif
 
-static uint32_t last_timestamp;
-
 void Setup() {
 	communication::setup();
 	timestamp::setup();
 	
-	/*
-	PORTB |=  (_BV(0) | _BV(1));
-	PORTD |=  (_BV(4) | _BV(7) | _BV(6));
+	DDRB  &= ~((_BV(0) | _BV(1)));
+	PORTB |=  ((_BV(0) | _BV(1)));
+	DDRD  &= ~((_BV(4) | _BV(7) | _BV(6)));
+	PORTD |=  ((_BV(4) | _BV(7) | _BV(6)));
 	const uint8_t unique_id = 
-		((PORTD & _BV(4)) ? 0 : 0b00001) |
-		((PORTD & _BV(6)) ? 0 : 0b00010) |
-		((PORTD & _BV(7)) ? 0 : 0b00100) |
-		((PORTB & _BV(0)) ? 0 : 0b01000) |
-		((PORTB & _BV(1)) ? 0 : 0b10000);*/
+		((PIND & _BV(4)) ? 0 : 0b00001) |
+		((PIND & _BV(6)) ? 0 : 0b00010) |
+		((PIND & _BV(7)) ? 0 : 0b00100) |
+		((PINB & _BV(0)) ? 0 : 0b01000) |
+		((PINB & _BV(1)) ? 0 : 0b10000);
+	communication::commandTypeSetBlockNr(COMMAND_TYPE_UNIQUE_ID, unique_id);
 	
-	communication::commandTypeSetBlockNr(COMMAND_TYPE_UNIQUE_ID, 0);
 	sei();
 	
-	last_timestamp = timestamp::getMsTimestamp();
-	DDRB |= _BV(2);
-	PORTB |= _BV(2);
-	PORTB &= ~_BV(2);
+	DDRC &= ~_BV(0);
+	PORTC |= _BV(0);
 }
 
+bool button_state = false;
 void Loop() {
 	communication::loop();
 	
-	uint32_t current_timestamp = timestamp::getMsTimestamp();
-	if (current_timestamp - last_timestamp > 1000) {
-		PORTB ^= _BV(2);
-		last_timestamp = current_timestamp;
-		communication::sendBroadcast(
-			66,
-			5,
-			[](bool is_timeout, uint8_t& payload_size, uint8_t *payload_buffer) -> bool {
-				if (is_timeout) {
-					PORTB ^= _BV(2);
-				} else {
-					memcpy(payload_buffer, "hello", 5);
-				}
-				return true;
-			});
+	if (~PINC & _BV(0)) {
+		if (!button_state) {
+			button_state = true;
+			communication::sendBroadcast(
+				02,
+				1,
+				[](bool is_timeout, uint8_t& payload_size, uint8_t *payload_buffer) -> bool {
+					return true;
+				});
+		}
+	} else {
+		button_state = false;
 	}
 }

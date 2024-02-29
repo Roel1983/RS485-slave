@@ -10,7 +10,7 @@ using namespace communication;
 
 namespace communication {
 
-communication::receiver::Command<COMMAND_TYPE_UNIQUE_ID, uint8_t> orange_led_command;
+communication::receiver::Command<COMMAND_TYPE_BROADCAST, uint8_t> orange_led_command;
 bool onOrangeLedCommand(uint8_t payload) {
 	DDRB |= _BV(3); // Debug
 	PORTB ^= _BV(3);
